@@ -1,0 +1,4 @@
+target/
+collision_meshes/
+*.svg
+Cargo.lock

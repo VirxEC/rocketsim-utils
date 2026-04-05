@@ -1,0 +1,101 @@
+use glam::Vec3A;
+
+use super::{
+    triangle_callback::ProcessTriangle, triangle_mesh::TriangleMesh, triangle_shape::TriangleShape,
+};
+use crate::shared::Aabb;
+
+pub struct TriangleMeshShape {
+    pub local_aabb: Aabb,
+}
+
+impl TriangleMeshShape {
+    pub fn new(mesh_interface: &TriangleMesh) -> Self {
+        Self {
+            local_aabb: Self::calc_local_aabb(mesh_interface),
+        }
+    }
+
+    pub fn get_aabb(&self) -> Aabb {
+        let local_half_extents = 0.5 * (self.local_aabb.max - self.local_aabb.min);
+        let local_center = 0.5 * (self.local_aabb.max + self.local_aabb.min);
+
+        let extent = local_half_extents;
+
+        Aabb {
+            min: local_center - extent,
+            max: local_center + extent,
+        }
+    }
+
+    pub fn process_all_triangles<T: ProcessTriangle>(
+        mesh_interface: &TriangleMesh,
+        callback: &mut T,
+    ) {
+        mesh_interface.internal_process_all_triangles(callback);
+    }
+
+    fn local_get_support_vertex(mesh_interface: &TriangleMesh, vec: Vec3A) -> Vec3A {
+        let mut support_callback = SupportVertexCallback::new(vec);
+
+        Self::process_all_triangles(mesh_interface, &mut support_callback);
+
+        support_callback.get_support_vertex_local()
+    }
+
+    fn calc_local_aabb(mesh_interface: &TriangleMesh) -> Aabb {
+        let mut min = Vec3A::ZERO;
+        let mut max = Vec3A::ZERO;
+
+        for i in 0..3 {
+            let mut vec = Vec3A::ZERO;
+
+            vec[i] = 1.0;
+            let mut tmp = Self::local_get_support_vertex(mesh_interface, vec);
+            max[i] = tmp[i];
+
+            vec[i] = -1.0;
+            tmp = Self::local_get_support_vertex(mesh_interface, vec);
+            min[i] = tmp[i];
+        }
+
+        Aabb { min, max }
+    }
+}
+
+struct SupportVertexCallback {
+    support_vertex_local: Vec3A,
+    max_dot: f32,
+    support_vec_local: Vec3A,
+}
+
+impl ProcessTriangle for SupportVertexCallback {
+    fn process_triangle(
+        &mut self,
+        triangle: &TriangleShape,
+        _tri_aabb: &Aabb,
+        _triangle_idx: usize,
+    ) {
+        for vert in triangle.points {
+            let dot = self.support_vec_local.dot(vert);
+            if dot > self.max_dot {
+                self.max_dot = dot;
+                self.support_vertex_local = vert;
+            }
+        }
+    }
+}
+
+impl SupportVertexCallback {
+    pub fn new(support_vec_world: Vec3A) -> Self {
+        Self {
+            support_vertex_local: Vec3A::ZERO,
+            support_vec_local: support_vec_world,
+            max_dot: f32::MIN,
+        }
+    }
+
+    pub const fn get_support_vertex_local(&self) -> Vec3A {
+        self.support_vertex_local
+    }
+}

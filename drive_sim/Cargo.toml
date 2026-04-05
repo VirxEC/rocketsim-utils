@@ -1,0 +1,15 @@
+[package]
+name = "drive_sim"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+glam.workspace = true
+
+[dev-dependencies]
+dubins_paths = { git = "https://github.com/VirxEC/dubins_paths.git", branch = "point_to_path", version = "3.2.0", features = [
+  "glam"
+] }
+indicatif = "0.18.4"
+rand = "0.10.0"
+rocketsim = { git = "https://github.com/VirxEC/RocketSim.git", branch = "glam-update", default-features = false }

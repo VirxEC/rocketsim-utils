@@ -1,0 +1,26 @@
+[workspace]
+resolver = "3"
+members = ["drive_sim", "ball_sim"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+glam = "0.32.1"
+
+[workspace.lints.clippy]
+all = "warn"
+nursery = "warn"
+
+[profile.dev]
+opt-level = 2
+
+[profile.release]
+strip = true
+lto = true
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+strip = false
