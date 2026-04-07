@@ -38,9 +38,7 @@ impl VehicleRL {
         }
 
         let friction_scale = chassis.mass / 3.0;
-        for wheel in &mut self.wheels {
-            wheel.calc_friction_impulses(chassis, friction_scale);
-        }
+        WheelInfo::calc_friction_impulses_simd(&mut self.wheels, chassis, friction_scale);
     }
 
     pub fn update_vehicle_second(&mut self, cb: &mut RigidBody, step: f32) {

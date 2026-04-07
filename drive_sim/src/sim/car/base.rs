@@ -1,4 +1,4 @@
-use glam::{Affine3A, Quat, Vec3A};
+use glam::{Affine3A, Quat, Vec3A, Vec4};
 
 use crate::{
     CarBodyConfig, CarControls, CarState, MutatorConfig,
@@ -12,7 +12,7 @@ use crate::{
                 wheel_info::WheelInfo,
             },
         },
-        linear_math::QuatExt,
+        linear_math::{QuatExt, to_simd},
     },
     consts::{
         self, BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
@@ -170,16 +170,50 @@ impl Car {
         let car_vel = rb.lin_vel;
         let car_ang_vel = rb.ang_vel;
 
-        for wheel in &mut self.bullet_vehicle.wheels {
+        let mut lat_dir_x = [0.0; NUM_WHEELS];
+        let mut lat_dir_y = [0.0; NUM_WHEELS];
+        let mut lat_dir_z = [0.0; NUM_WHEELS];
+        let mut wheel_delta_x = [0.0; NUM_WHEELS];
+        let mut wheel_delta_y = [0.0; NUM_WHEELS];
+        let mut wheel_delta_z = [0.0; NUM_WHEELS];
+
+        for (i, wheel) in self.bullet_vehicle.wheels.iter().enumerate() {
             let lat_dir = wheel.axle_dir;
-            let long_dir = lat_dir.cross(Vec3A::Z);
-
             let wheel_delta = wheel.raycast_info.hard_point_ws - car_pos;
-            let cross_vec = (car_ang_vel.cross(wheel_delta) + car_vel) * BT_TO_UU;
 
-            let base_friction = cross_vec.dot(lat_dir).abs();
+            lat_dir_x[i] = lat_dir.x;
+            lat_dir_y[i] = lat_dir.y;
+            lat_dir_z[i] = lat_dir.z;
+
+            wheel_delta_x[i] = wheel_delta.x;
+            wheel_delta_y[i] = wheel_delta.y;
+            wheel_delta_z[i] = wheel_delta.z;
+        }
+
+        let [lat_dir_x, lat_dir_y, lat_dir_z] = to_simd(&[lat_dir_x, lat_dir_y, lat_dir_z]);
+        let [wheel_delta_x, wheel_delta_y, wheel_delta_z] =
+            to_simd(&[wheel_delta_x, wheel_delta_y, wheel_delta_z]);
+
+        let avx = Vec4::splat(car_ang_vel.x);
+        let avy = Vec4::splat(car_ang_vel.y);
+        let avz = Vec4::splat(car_ang_vel.z);
+
+        let cross_x = avy * wheel_delta_z - avz * wheel_delta_y;
+        let cross_y = avz * wheel_delta_x - avx * wheel_delta_z;
+        let cross_z = avx * wheel_delta_y - avy * wheel_delta_x;
+
+        let cross_vec_x = (cross_x + car_vel.x) * BT_TO_UU;
+        let cross_vec_y = (cross_y + car_vel.y) * BT_TO_UU;
+        let cross_vec_z = (cross_z + car_vel.z) * BT_TO_UU;
+
+        let base_friction =
+            (cross_vec_x * lat_dir_x + cross_vec_y * lat_dir_y + cross_vec_z * lat_dir_z).abs();
+        let long_dot = (cross_vec_x * lat_dir_y - cross_vec_y * lat_dir_x).abs();
+
+        for (i, wheel) in self.bullet_vehicle.wheels.iter_mut().enumerate() {
+            let base_friction = base_friction[i];
             let friction_curve_input = if base_friction > 5.0 {
-                base_friction / (cross_vec.dot(long_dir).abs() + base_friction)
+                base_friction / (long_dot[i] + base_friction)
             } else {
                 0.0
             };
@@ -188,12 +222,12 @@ impl Car {
             let mut long_friction = 1.0;
 
             if self.state.handbrake_val != 0.0 {
-                let handbrake_amount = self.state.handbrake_val;
-                lat_friction *= 1.0 - curves::HANDBRAKE_LAT_FRICTION_FACTOR * handbrake_amount;
+                lat_friction *=
+                    1.0 - curves::HANDBRAKE_LAT_FRICTION_FACTOR * self.state.handbrake_val;
                 long_friction *= 1.0
                     + (curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input)
                         - 1.0)
-                        * handbrake_amount;
+                        * self.state.handbrake_val;
             }
 
             wheel.lat_friction = lat_friction;

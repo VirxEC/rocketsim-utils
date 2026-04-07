@@ -18,7 +18,6 @@ fn mat3a_from_direction(direction: Vec3A, up: Vec3A) -> Mat3A {
     Mat3A::from_cols(forward, right, up)
 }
 
-#[derive(Clone, Copy, Debug, Default)]
 struct GlamPhysics {
     pub rot: Mat3A,
     pub local_ang_vel: Vec3A,
@@ -27,7 +26,6 @@ struct GlamPhysics {
 }
 
 impl GlamPhysics {
-    #[must_use]
     fn local_pos(&self, vec: Vec3A) -> Vec3A {
         self.rot.mul_transpose_vec3a(vec - self.pos)
     }
@@ -141,7 +139,7 @@ fn get_throttle_and_boost(
 
 fn main() {
     const TRUNC_NUM_TICKS: u32 = 6 * 120;
-    const STEER_REACTION_TIME: f32 = 0.25;
+    const STEER_REACTION_TIME: f32 = 0.3;
     const BOOST_ACCEL: f32 = 2975. / 3.;
 
     let sequence = generate_sequence();

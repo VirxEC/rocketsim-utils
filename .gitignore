@@ -1,4 +1,5 @@
 target/
 collision_meshes/
 *.svg
+*.data*
 Cargo.lock
