@@ -1,5 +1,6 @@
 target/
+Cargo.lock
 collision_meshes/
 *.svg
 *.data*
-Cargo.lock
+heaptrack*

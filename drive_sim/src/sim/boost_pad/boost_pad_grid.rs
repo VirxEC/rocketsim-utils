@@ -83,13 +83,12 @@ impl BoostPadGrid {
 
         let mut bvh_tree = bvh::Tree::new(all_aabb, pad_configs.len());
 
-        let mut aabb_nodes = Vec::new();
+        let mut aabb_nodes = Vec::with_capacity(all_pads.len());
         for (i, pad) in all_pads.iter().enumerate() {
-            let node = bvh::Node {
+            aabb_nodes.push(bvh::Node {
                 aabb: pad.aabb(),
                 node_type: bvh::BvhNodeType::Leaf { leaf_idx: i },
-            };
-            aabb_nodes.push(node);
+            });
         }
 
         let num_nodes = aabb_nodes.len();
