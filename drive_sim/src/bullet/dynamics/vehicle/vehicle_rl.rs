@@ -4,10 +4,7 @@ use super::wheel_info::WheelInfo;
 use crate::{
     bullet::{
         collision::StaticPlaneShape,
-        dynamics::{
-            contact_constraint::resolve_single_bilateral,
-            discrete_dynamics_world::DiscreteDynamicsWorld, rigid_body::RigidBody,
-        },
+        dynamics::{contact_constraint::resolve_single_bilateral, rigid_body::RigidBody},
         linear_math::{from_simd, to_simd},
     },
     consts::{UU_TO_BT, bullet_vehicle},
@@ -19,14 +16,15 @@ const SUSPENSION_TRAVEL: f32 = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
 #[derive(Default)]
 struct RaycastInfo {
     contact_point_ws: [Vec4; 3],
-    // hard_point_ws: [Vec4; 3],
-    // wheel_direction_ws: [Vec4; 3],
+    hard_point_ws: [Vec4; 3],
+    wheel_direction_ws: Vec3A,
 }
 
 #[derive(Default)]
 pub struct VehicleRL {
     pub wheels: [WheelInfo; NUM_WHEELS],
     raycast_info: RaycastInfo,
+    pub chassis_connection_point_cs: [Vec4; 3],
     pub engine_force: f32,
     pub brake: f32,
     pub suspension_force_scale: Vec4,
@@ -115,69 +113,77 @@ impl VehicleRL {
         let impulse_y = self.impulse[1] * scale;
         let impulse_z = self.impulse[2] * scale;
 
-        for i in 0..4 {
-            let impulse = Vec3A::new(impulse_x[i], impulse_y[i], impulse_z[i]);
-            let rel_pos = Vec3A::new(wheel_rel_x[i], wheel_rel_y[i], wheel_rel_z[i]);
-            cb.apply_impulse(impulse, rel_pos);
-        }
+        cb.apply_impulses(
+            impulse_x,
+            impulse_y,
+            impulse_z,
+            wheel_rel_x,
+            wheel_rel_y,
+            wheel_rel_z,
+        );
     }
 
-    fn get_raycast_info_simd(&self) -> ([Vec4; 3], [Vec4; 3]) {
-        let mut source_x = [0.0; 4];
-        let mut source_y = [0.0; 4];
-        let mut source_z = [0.0; 4];
-        let mut dir_x = [0.0; 4];
-        let mut dir_y = [0.0; 4];
-        let mut dir_z = [0.0; 4];
+    fn get_raycast_targets(&self) -> [Vec4; 3] {
         let mut rest_len = [0.0; 4];
         let mut wheel_radius = [0.0; 4];
 
         for (i, wheel) in self.wheels.iter().enumerate() {
-            let source = wheel.raycast_info.hard_point_ws;
-            source_x[i] = source.x;
-            source_y[i] = source.y;
-            source_z[i] = source.z;
-
-            let dir = wheel.raycast_info.wheel_direction_ws;
-            dir_x[i] = dir.x;
-            dir_y[i] = dir.y;
-            dir_z[i] = dir.z;
-
             rest_len[i] = wheel.suspension_rest_length_1;
             wheel_radius[i] = wheel.wheel_radius;
         }
-
-        let [source_x, source_y, source_z] = to_simd(&[source_x, source_y, source_z]);
-        let [dir_x, dir_y, dir_z] = to_simd(&[dir_x, dir_y, dir_z]);
 
         let ray_length = Vec4::from_array(rest_len)
             + Vec4::from_array(wheel_radius)
             + (SUSPENSION_TRAVEL - bullet_vehicle::SUSPENSION_SUBTRACTION);
 
-        let target_x = source_x + dir_x * ray_length;
-        let target_y = source_y + dir_y * ray_length;
-        let target_z = source_z + dir_z * ray_length;
+        let target_x = self.raycast_info.hard_point_ws[0]
+            + self.raycast_info.wheel_direction_ws.x * ray_length;
+        let target_y = self.raycast_info.hard_point_ws[1]
+            + self.raycast_info.wheel_direction_ws.y * ray_length;
+        let target_z = self.raycast_info.hard_point_ws[2]
+            + self.raycast_info.wheel_direction_ws.z * ray_length;
 
-        (
-            [source_x, source_y, source_z],
-            [target_x, target_y, target_z],
-        )
+        [target_x, target_y, target_z]
     }
 
-    pub fn update_vehicle_first(&mut self, collision_world: &DiscreteDynamicsWorld) {
-        let chassis = &collision_world.collision_obj;
+    pub fn update_vehicle_first(&mut self, chassis: &RigidBody) {
+        let chassis_trans = chassis.get_world_trans();
+        let basis_x = chassis_trans.matrix3.x_axis;
+        let basis_y = chassis_trans.matrix3.y_axis;
+        let basis_z = chassis_trans.matrix3.z_axis;
+
+        let hard_x = self.chassis_connection_point_cs[0] * basis_x.x
+            + self.chassis_connection_point_cs[1] * basis_y.x
+            + self.chassis_connection_point_cs[2] * basis_z.x
+            + chassis_trans.translation.x;
+        let hard_y = self.chassis_connection_point_cs[0] * basis_x.y
+            + self.chassis_connection_point_cs[1] * basis_y.y
+            + self.chassis_connection_point_cs[2] * basis_z.y
+            + chassis_trans.translation.y;
+        let hard_z = self.chassis_connection_point_cs[0] * basis_x.z
+            + self.chassis_connection_point_cs[1] * basis_y.z
+            + self.chassis_connection_point_cs[2] * basis_z.z
+            + chassis_trans.translation.z;
+
+        self.raycast_info.hard_point_ws = [hard_x, hard_y, hard_z];
+        self.raycast_info.wheel_direction_ws = -basis_z;
+
+        for (i, wheel) in self.wheels.iter_mut().enumerate() {
+            wheel.raycast_info.hard_point_ws = Vec3A::new(hard_x[i], hard_y[i], hard_z[i]);
+        }
 
         for wheel in &mut self.wheels[0..2] {
-            wheel.update_wheel_trans::<true>(chassis.get_world_trans());
+            wheel.axle_dir = wheel.steering_orn * chassis_trans.matrix3.y_axis;
         }
 
         for wheel in &mut self.wheels[2..] {
-            wheel.update_wheel_trans::<false>(chassis.get_world_trans());
+            wheel.axle_dir = chassis_trans.matrix3.y_axis;
         }
 
-        let (sources, targets) = self.get_raycast_info_simd();
+        let targets = self.get_raycast_targets();
 
-        let ray_results = StaticPlaneShape::perform_raycast(&sources, &targets);
+        let ray_results =
+            StaticPlaneShape::perform_raycast(&self.raycast_info.hard_point_ws, &targets);
         self.raycast_info.contact_point_ws = ray_results;
 
         let ray_results = from_simd(&ray_results);
@@ -226,11 +232,8 @@ impl VehicleRL {
         let torque_x = rel_y * suspension_force;
         let torque_y = -rel_x * suspension_force;
 
-        let total_torque_x = torque_x.x + torque_x.y + torque_x.z + torque_x.w;
-        let total_torque_y = torque_y.x + torque_y.y + torque_y.z + torque_y.w;
-
-        cb.ang_vel += cb.inv_inertia_tensor_world.x_axis * total_torque_x
-            + cb.inv_inertia_tensor_world.y_axis * total_torque_y;
+        cb.ang_vel += cb.inv_inertia_tensor_world.x_axis * torque_x.element_sum()
+            + cb.inv_inertia_tensor_world.y_axis * torque_y.element_sum();
     }
 
     pub fn update_vehicle_second(&mut self, cb: &mut RigidBody, step: f32) {

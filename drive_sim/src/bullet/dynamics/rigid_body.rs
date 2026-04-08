@@ -1,6 +1,6 @@
 use std::f32::consts::FRAC_PI_4;
 
-use glam::{Affine3A, Mat3A, Quat, Vec3A};
+use glam::{Affine3A, Mat3A, Quat, Vec3A, Vec4};
 
 use crate::consts::TICK_TIME;
 
@@ -70,6 +70,35 @@ impl RigidBody {
     pub fn apply_impulse(&mut self, impulse: Vec3A, rel_pos: Vec3A) {
         self.apply_central_impulse(impulse);
         self.apply_torque_impulse(rel_pos.cross(impulse));
+    }
+
+    #[inline]
+    pub fn apply_impulses(
+        &mut self,
+        impulse_x: Vec4,
+        impulse_y: Vec4,
+        impulse_z: Vec4,
+        rel_x: Vec4,
+        rel_y: Vec4,
+        rel_z: Vec4,
+    ) {
+        let total_impulse = Vec3A::new(
+            impulse_x.element_sum(),
+            impulse_y.element_sum(),
+            impulse_z.element_sum(),
+        );
+        self.apply_central_impulse(total_impulse);
+
+        let torque_x = rel_y * impulse_z - rel_z * impulse_y;
+        let torque_y = rel_z * impulse_x - rel_x * impulse_z;
+        let torque_z = rel_x * impulse_y - rel_y * impulse_x;
+
+        let torque = Vec3A::new(
+            torque_x.element_sum(),
+            torque_y.element_sum(),
+            torque_z.element_sum(),
+        );
+        self.apply_torque_impulse(torque);
     }
 
     #[inline]

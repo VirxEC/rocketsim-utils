@@ -60,15 +60,12 @@ impl Car {
                 wheel_config.connection_point_offset * Vec3A::new(1.0, -1.0, 1.0)
             } else {
                 wheel_config.connection_point_offset
-            };
+            } * UU_TO_BT;
+            bullet_vehicle.chassis_connection_point_cs[0][i] = wheel_ray_start_offset.x;
+            bullet_vehicle.chassis_connection_point_cs[1][i] = wheel_ray_start_offset.y;
+            bullet_vehicle.chassis_connection_point_cs[2][i] = wheel_ray_start_offset.z;
 
-            *wheel = WheelInfo::new(
-                wheel_ray_start_offset * UU_TO_BT,
-                suspension_rest_length * UU_TO_BT,
-                radius * UU_TO_BT,
-            );
-
-            wheel.update_wheel_trans::<true>(body.get_world_trans());
+            *wheel = WheelInfo::new(suspension_rest_length * UU_TO_BT, radius * UU_TO_BT);
         }
 
         (
@@ -275,7 +272,8 @@ impl Car {
         let forward_speed_uu = collision_world.collision_obj.get_forward_speed() * BT_TO_UU;
 
         // Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses)
-        self.bullet_vehicle.update_vehicle_first(collision_world);
+        self.bullet_vehicle
+            .update_vehicle_first(&collision_world.collision_obj);
 
         self.update_wheels(&mut collision_world.collision_obj, forward_speed_uu);
 
