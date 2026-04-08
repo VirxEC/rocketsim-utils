@@ -7,12 +7,9 @@ use crate::{
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
             rigid_body::RigidBody,
-            vehicle::{
-                vehicle_rl::{NUM_WHEELS, VehicleRL},
-                wheel_info::WheelInfo,
-            },
+            vehicle::{NUM_WHEELS, VehicleRL},
         },
-        linear_math::{QuatExt, to_simd},
+        linear_math::QuatExt,
     },
     consts::{
         self, BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
@@ -35,7 +32,7 @@ impl Car {
 
         let mut bullet_vehicle = VehicleRL::default();
 
-        for (i, wheel) in bullet_vehicle.wheels.iter_mut().enumerate() {
+        for i in 0..NUM_WHEELS {
             let front = i < 2;
             let left = i % 2 != 0;
 
@@ -65,7 +62,8 @@ impl Car {
             bullet_vehicle.chassis_connection_point_cs[1][i] = wheel_ray_start_offset.y;
             bullet_vehicle.chassis_connection_point_cs[2][i] = wheel_ray_start_offset.z;
 
-            *wheel = WheelInfo::new(suspension_rest_length * UU_TO_BT, radius * UU_TO_BT);
+            bullet_vehicle.suspension_rest_length_1[i] = suspension_rest_length * UU_TO_BT;
+            bullet_vehicle.wheel_radius[i] = radius * UU_TO_BT;
         }
 
         (
@@ -158,36 +156,20 @@ impl Car {
 
         steer_angle *= self.state.controls.steer;
         let steering_orn = Quat::from_angle_axis_up(steer_angle);
-        self.bullet_vehicle.wheels[0].steering_orn = steering_orn;
-        self.bullet_vehicle.wheels[1].steering_orn = steering_orn;
+        self.bullet_vehicle.steering_orn[0] = steering_orn;
+        self.bullet_vehicle.steering_orn[1] = steering_orn;
 
         let car_pos = rb.get_world_pos();
         let car_vel = rb.lin_vel;
         let car_ang_vel = rb.ang_vel;
 
-        let mut lat_dir_x = [0.0; NUM_WHEELS];
-        let mut lat_dir_y = [0.0; NUM_WHEELS];
-        let mut lat_dir_z = [0.0; NUM_WHEELS];
-        let mut wheel_delta_x = [0.0; NUM_WHEELS];
-        let mut wheel_delta_y = [0.0; NUM_WHEELS];
-        let mut wheel_delta_z = [0.0; NUM_WHEELS];
+        let [hard_point_x, hard_point_y, hard_point_z] =
+            self.bullet_vehicle.raycast_info.hard_point_ws;
+        let [lat_dir_x, lat_dir_y, lat_dir_z] = self.bullet_vehicle.axle_dir;
 
-        for (i, wheel) in self.bullet_vehicle.wheels.iter().enumerate() {
-            let lat_dir = wheel.axle_dir;
-            let wheel_delta = wheel.raycast_info.hard_point_ws - car_pos;
-
-            lat_dir_x[i] = lat_dir.x;
-            lat_dir_y[i] = lat_dir.y;
-            lat_dir_z[i] = lat_dir.z;
-
-            wheel_delta_x[i] = wheel_delta.x;
-            wheel_delta_y[i] = wheel_delta.y;
-            wheel_delta_z[i] = wheel_delta.z;
-        }
-
-        let [lat_dir_x, lat_dir_y, lat_dir_z] = to_simd(&[lat_dir_x, lat_dir_y, lat_dir_z]);
-        let [wheel_delta_x, wheel_delta_y, wheel_delta_z] =
-            to_simd(&[wheel_delta_x, wheel_delta_y, wheel_delta_z]);
+        let wheel_delta_x = hard_point_x - car_pos.x;
+        let wheel_delta_y = hard_point_y - car_pos.y;
+        let wheel_delta_z = hard_point_z - car_pos.z;
 
         let avx = Vec4::splat(car_ang_vel.x);
         let avy = Vec4::splat(car_ang_vel.y);
