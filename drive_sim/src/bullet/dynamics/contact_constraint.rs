@@ -2,7 +2,7 @@ use glam::Vec4;
 
 use crate::bullet::dynamics::rigid_body::RigidBody;
 
-pub fn resolve_single_bilateral_simd(
+pub fn resolve_single_bilateral(
     chassis: &RigidBody,
     rel_pos_x: Vec4,
     rel_pos_y: Vec4,

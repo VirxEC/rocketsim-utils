@@ -11,19 +11,18 @@ const SUSPENSION_TRAVEL: f32 = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
 pub struct RaycastInfo {
     pub contact_point_ws: Vec3A,
     pub hard_point_ws: Vec3A,
-    wheel_direction_ws: Vec3A,
+    pub wheel_direction_ws: Vec3A,
 }
 
 #[derive(Clone, Copy, Default)]
 pub struct WheelInfo {
     chassis_connection_point_cs: Vec3A,
-    suspension_length: f32,
-    suspension_rest_length_1: f32,
-    suspension_force_scale: f32,
-    wheel_radius: f32,
-    suspension_relative_vel: f32,
-    wheels_suspension_force: f32,
-    pub impulse: Vec3A,
+    pub suspension_length: f32,
+    pub suspension_rest_length_1: f32,
+    pub suspension_force_scale: f32,
+    pub wheel_radius: f32,
+    pub suspension_relative_vel: f32,
+    pub wheels_suspension_force: f32,
     pub raycast_info: RaycastInfo,
     pub axle_dir: Vec3A,
     pub steering_orn: Quat,
@@ -47,7 +46,6 @@ impl WheelInfo {
             suspension_relative_vel: 0.0,
             wheels_suspension_force: 0.0,
             steering_orn: Quat::IDENTITY,
-            impulse: Vec3A::ZERO,
         }
     }
 
@@ -60,16 +58,6 @@ impl WheelInfo {
         } else {
             chassis_trans.matrix3.y_axis
         };
-    }
-
-    pub fn get_raycast_info(&self) -> (Vec3A, Vec3A) {
-        let real_ray_length = self.suspension_rest_length_1 + self.wheel_radius + SUSPENSION_TRAVEL
-            - bullet_vehicle::SUSPENSION_SUBTRACTION;
-
-        let source = self.raycast_info.hard_point_ws;
-        let target = source + self.raycast_info.wheel_direction_ws * real_ray_length;
-
-        (source, target)
     }
 
     pub fn apply_ray_cast(&mut self, chassis: &RigidBody, hit_point_in_world: Vec3A) {
@@ -116,13 +104,5 @@ impl WheelInfo {
 
         let force = Vec3A::new(0.0, 0.0, base_force_scale);
         cb.apply_impulse(force, contact_point_offset);
-    }
-
-    pub fn apply_friction_impulses(&self, cb: &mut RigidBody, time_step: f32) {
-        let trans = cb.get_world_trans();
-        let wheel_contact_offset = self.raycast_info.contact_point_ws - trans.translation;
-        let contact_up_dot = trans.matrix3.z_axis.dot(wheel_contact_offset);
-        let wheel_rel_pos = wheel_contact_offset - trans.matrix3.z_axis * contact_up_dot;
-        cb.apply_impulse(self.impulse * time_step, wheel_rel_pos);
     }
 }
