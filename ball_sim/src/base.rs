@@ -22,11 +22,8 @@ use crate::{
 
 static HAS_INITIALIZED_LOCK: OnceLock<()> = OnceLock::new();
 
-pub(crate) static ARENA_COLLISION_SHAPES: RwLock<
+pub static ARENA_COLLISION_SHAPES: RwLock<
     Option<AHashMap<GameMode, Vec<Arc<BvhTriangleMeshShape>>>>,
-> = RwLock::new(None);
-pub(crate) static ARENA_COLLISION_MESH_FILES: RwLock<
-    Option<AHashMap<GameMode, Vec<CollisionMeshFile>>>,
 > = RwLock::new(None);
 
 pub fn is_initialized() -> bool {
@@ -110,7 +107,6 @@ pub fn init_from_mem(
     // TODO: DropshotTiles::Init();
 
     let mut arena_collision_shapes = AHashMap::new();
-    let mut arena_collision_mesh_files = AHashMap::new();
 
     for (game_mode, byte_mesh_files) in byte_mesh_file_map {
         info!("Loading arena meshes for {}...", game_mode.name());
@@ -121,7 +117,6 @@ pub fn init_from_mem(
         }
 
         let mut meshes = Vec::with_capacity(byte_mesh_files.len());
-        let mut mesh_files = Vec::with_capacity(byte_mesh_files.len());
         let mut target_hashes = game_mode.get_hashes();
 
         for (i, entry) in byte_mesh_files.into_iter().enumerate() {
@@ -148,11 +143,9 @@ pub fn init_from_mem(
             let tri_mesh = mesh_file.make_bullet_mesh();
             let bvt_mesh = BvhTriangleMeshShape::new(tri_mesh);
             meshes.push(Arc::new(bvt_mesh));
-            mesh_files.push(mesh_file);
         }
 
         arena_collision_shapes.insert(game_mode, meshes);
-        arena_collision_mesh_files.insert(game_mode, mesh_files);
     }
 
     {
@@ -185,13 +178,11 @@ pub fn init_from_mem(
 
     {
         let mut arena_collision_shapes_lock = ARENA_COLLISION_SHAPES.write().unwrap();
-        let mut arena_collision_mesh_files_lock = ARENA_COLLISION_MESH_FILES.write().unwrap();
         assert!(
             arena_collision_shapes_lock.is_none(),
             "RocketSim initialization called twice"
         );
         *arena_collision_shapes_lock = Some(arena_collision_shapes);
-        *arena_collision_mesh_files_lock = Some(arena_collision_mesh_files);
     }
 
     Ok(())

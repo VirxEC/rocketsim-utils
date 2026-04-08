@@ -6,14 +6,14 @@ pub enum Team {
 }
 
 impl Team {
-    pub const ALL: [Team; 2] = [Team::Blue, Team::Orange];
+    pub const ALL: [Self; 2] = [Self::Blue, Self::Orange];
 
     pub const fn is_blue(self) -> bool {
-        (self as usize) == (Team::Blue as usize)
+        (self as usize) == (Self::Blue as usize)
     }
 
     pub const fn is_orange(self) -> bool {
-        (self as usize) == (Team::Orange as usize)
+        (self as usize) == (Self::Orange as usize)
     }
 
     pub const fn from_team_y(y: f32) -> Self {
@@ -24,10 +24,10 @@ impl Team {
         (self as i8 * 2 - 1) as f32
     }
 
-    pub const fn opposite(self) -> Team {
+    pub const fn opposite(self) -> Self {
         match self {
-            Self::Blue => Team::Orange,
-            Self::Orange => Team::Blue,
+            Self::Blue => Self::Orange,
+            Self::Orange => Self::Blue,
         }
     }
 }

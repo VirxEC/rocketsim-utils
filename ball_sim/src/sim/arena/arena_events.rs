@@ -7,19 +7,21 @@ pub struct BallHitWorldEvent {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ArenaEventList {
+pub struct ArenaEventList {
     events: Vec<BallHitWorldEvent>,
+}
+
+impl Default for ArenaEventList {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            events: Vec::with_capacity(Self::STARTING_CAPACITY),
+        }
+    }
 }
 
 impl ArenaEventList {
     const STARTING_CAPACITY: usize = 12;
-
-    #[inline]
-    pub fn new() -> ArenaEventList {
-        ArenaEventList {
-            events: Vec::with_capacity(Self::STARTING_CAPACITY),
-        }
-    }
 
     #[inline]
     pub fn push(&mut self, event: BallHitWorldEvent) {

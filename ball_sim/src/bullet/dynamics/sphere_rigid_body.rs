@@ -124,7 +124,7 @@ impl SphereRigidBody {
         self.world_trans + self.lin_vel * time_step
     }
 
-    pub fn set_center_of_mass_trans(&mut self, xform: Vec3A) {
+    pub const fn set_center_of_mass_trans(&mut self, xform: Vec3A) {
         self.interp_world_trans = xform;
         self.set_world_trans(xform);
     }

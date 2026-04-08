@@ -24,8 +24,7 @@ impl Arena {
             collision_obj: car_body,
         };
 
-        let mut boost_pad_grid = None;
-        if game_mode != GameMode::Dropshot {
+        let boost_pad_grid = if game_mode != GameMode::Dropshot {
             let mut boost_pad_configs = Vec::new();
 
             let small_pad_locs = consts::boost_pads::get_locations(game_mode, false);
@@ -46,8 +45,10 @@ impl Arena {
                 });
             }
 
-            boost_pad_grid = Some(BoostPadGrid::new(&boost_pad_configs, &mutator_config));
-        }
+            Some(BoostPadGrid::new(&boost_pad_configs, &mutator_config))
+        } else {
+            None
+        };
 
         Self {
             game_mode,
@@ -96,11 +97,11 @@ impl Arena {
         &self.car
     }
 
-    pub fn get_car_state(&self) -> &CarState {
+    pub const fn get_car_state(&self) -> &CarState {
         self.car.get_state()
     }
 
-    pub fn get_car_controls(&self) -> &CarControls {
+    pub const fn get_car_controls(&self) -> &CarControls {
         &self.car.state.controls
     }
 
@@ -109,20 +110,17 @@ impl Arena {
             .set_state(&mut self.bullet_world.collision_obj, &state);
     }
 
-    pub fn set_car_controls(&mut self, controls: CarControls) {
+    pub const fn set_car_controls(&mut self, controls: CarControls) {
         self.car.state.controls = controls;
     }
 
     pub fn get_boost_pad_state(&self, idx: usize) -> BoostPadState {
         let pad = self.boost_pads()[idx];
-
-        let cooldown = if let Some(gave_boost_tick) = pad.gave_boost_tick_count {
+        let cooldown = pad.gave_boost_tick_count.map_or(0.0, |gave_boost_tick| {
             let max_cooldown = pad.max_cooldown;
             let time_since = ((self.tick_count() - gave_boost_tick) as f32) * TICK_TIME;
             (max_cooldown - time_since).max(0.0)
-        } else {
-            0.0
-        };
+        });
 
         BoostPadState { cooldown }
     }

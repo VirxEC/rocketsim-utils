@@ -66,7 +66,7 @@ impl SeqImpulseConstraintSolver {
 
     fn solve_group_setup(
         &mut self,
-        ball_obj: &mut SphereRigidBody,
+        ball_obj: &SphereRigidBody,
         manifolds: &mut ArrayVec<PersistentManifold, 4>,
         time_step: f32,
     ) {
@@ -88,7 +88,7 @@ impl SeqImpulseConstraintSolver {
         }
     }
 
-    fn setup_solver_bodies(&mut self, ball_obj: &mut SphereRigidBody, time_step: f32) {
+    fn setup_solver_bodies(&mut self, ball_obj: &SphereRigidBody, time_step: f32) {
         self.solver_body.update(ball_obj, time_step);
     }
 

@@ -12,3 +12,6 @@ dubins_paths = { git = "https://github.com/VirxEC/dubins_paths.git", branch = "p
 ] }
 indicatif = "0.18.4"
 rand = "0.10.0"
+
+[lints]
+workspace = true

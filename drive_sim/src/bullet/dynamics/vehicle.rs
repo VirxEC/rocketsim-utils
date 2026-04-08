@@ -201,7 +201,7 @@ impl VehicleRL {
         self.calc_friction_impulses(chassis, chassis.mass / 3.0);
     }
 
-    fn update_suspension(&mut self, cb: &mut RigidBody, delta_time: f32) {
+    fn update_suspension(&self, cb: &mut RigidBody, delta_time: f32) {
         const SUSPENSION_FORCE_SCALE: Vec4 = Vec4::new(
             SUSPENSION_FORCE_SCALE_FRONT,
             SUSPENSION_FORCE_SCALE_FRONT,
@@ -239,7 +239,7 @@ impl VehicleRL {
             + cb.inv_inertia_tensor_world.y_axis * torque_y.element_sum();
     }
 
-    pub fn update_vehicle_second(&mut self, cb: &mut RigidBody, step: f32) {
+    pub fn update_vehicle_second(&self, cb: &mut RigidBody, step: f32) {
         self.update_suspension(cb, step);
         self.apply_friction_impulses(cb, step);
     }

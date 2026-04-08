@@ -8,23 +8,26 @@ use crate::bullet::{
 
 // An instance of a contact event
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct ContactRecord {
+pub struct ContactRecord {
     pub manifold_point: ManifoldPoint,
 }
 
 // A struct to be accessed through the bullet contact callbacks
-pub(crate) struct ArenaContactTracker {
+pub struct ArenaContactTracker {
     collision_records: Vec<ContactRecord>,
 }
 
-impl ArenaContactTracker {
-    pub fn new() -> Self {
+impl Default for ArenaContactTracker {
+    #[inline]
+    fn default() -> Self {
         Self {
             collision_records: Vec::with_capacity(4), // Rarely exceeded
         }
     }
+}
 
-    pub fn num_records(&self) -> usize {
+impl ArenaContactTracker {
+    pub const fn num_records(&self) -> usize {
         self.collision_records.len()
     }
 

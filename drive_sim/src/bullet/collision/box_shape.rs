@@ -15,7 +15,7 @@ impl BoxShape {
     }
 
     #[inline]
-    fn get_half_extents(&self) -> Vec3A {
+    const fn get_half_extents(&self) -> Vec3A {
         self.implicit_dim
     }
 

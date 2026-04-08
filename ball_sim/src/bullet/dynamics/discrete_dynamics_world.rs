@@ -36,12 +36,12 @@ impl DiscreteDynamicsWorld {
     }
 
     #[inline]
-    pub fn ball_mut(&mut self) -> &mut SphereRigidBody {
+    pub const fn ball_mut(&mut self) -> &mut SphereRigidBody {
         &mut self.collision_world.ball_obj
     }
 
     #[inline]
-    pub fn ball(&self) -> &SphereRigidBody {
+    pub const fn ball(&self) -> &SphereRigidBody {
         &self.collision_world.ball_obj
     }
 
@@ -83,7 +83,7 @@ impl DiscreteDynamicsWorld {
     }
 
     #[inline]
-    fn clear_forces(&mut self) {
+    const fn clear_forces(&mut self) {
         self.collision_world.ball_obj.clear_forces();
     }
 

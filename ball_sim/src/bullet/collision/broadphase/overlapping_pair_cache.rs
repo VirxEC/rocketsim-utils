@@ -27,7 +27,7 @@ impl HashedOverlappingPairCache {
     }
 
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.overlapping_pair_array.is_empty()
     }
 

@@ -32,7 +32,7 @@ impl SolverBody {
         self.lin_vel + self.external_force_impulse + self.ang_vel.cross(rel_pos)
     }
 
-    pub fn update(&mut self, rb: &mut SphereRigidBody, time_step: f32) {
+    pub fn update(&mut self, rb: &SphereRigidBody, time_step: f32) {
         self.delta_lin_vel = Vec3A::ZERO;
         self.delta_ang_vel = Vec3A::ZERO;
         self.inv_mass = rb.inv_mass;

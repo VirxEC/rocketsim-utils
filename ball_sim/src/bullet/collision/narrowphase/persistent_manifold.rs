@@ -26,11 +26,11 @@ impl PersistentManifold {
         }
     }
 
-    fn calculate_combined_friction(body0: &SphereRigidBody, body1: &RigidBody) -> f32 {
+    const fn calculate_combined_friction(body0: &SphereRigidBody, body1: &RigidBody) -> f32 {
         body0.friction.min(body1.friction)
     }
 
-    fn calculate_combined_restitution(body0: &SphereRigidBody, body1: &RigidBody) -> f32 {
+    const fn calculate_combined_restitution(body0: &SphereRigidBody, body1: &RigidBody) -> f32 {
         body0.restitution.max(body1.restitution)
     }
 

@@ -13,7 +13,7 @@ use crate::{
     sim::consts,
 };
 
-pub(crate) struct Ball {
+pub struct Ball {
     pub state: BallState,
     pub ground_stick_applied: bool,
     pub vel_impulse_cache: Option<Vec3A>,

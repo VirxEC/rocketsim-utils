@@ -3,7 +3,7 @@ use glam::Vec3A;
 use crate::{BoostPadConfig, MutatorConfig, consts::boost_pads, shared::Aabb};
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct BoostPad {
+pub struct BoostPad {
     pub config: BoostPadConfig,
     pub _box_radius: f32, // TODO: Implement car-locking with box hitbox
     pub cyl_radius: f32,

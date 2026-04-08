@@ -11,7 +11,7 @@ glam = "0.32.1"
 
 [workspace.lints.clippy]
 all = "warn"
-nursery = "warn"
+# nursery = "warn"
 
 [profile.dev]
 opt-level = 2

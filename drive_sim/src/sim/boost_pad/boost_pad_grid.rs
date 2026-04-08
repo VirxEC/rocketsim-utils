@@ -42,7 +42,7 @@ impl<'a> bvh::ProcessNode for BoostPadProcessor<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BoostPadGrid {
+pub struct BoostPadGrid {
     pub bvh_tree: bvh::Tree,
     pub all_pads: Box<[BoostPad]>,
     pub max_pad_z: f32,

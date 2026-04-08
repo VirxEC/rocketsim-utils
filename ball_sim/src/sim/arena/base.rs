@@ -69,9 +69,8 @@ impl Arena {
             mutator_config,
             tick_count: 0,
             bullet_world,
-
-            contact_tracker: ArenaContactTracker::new(),
-            events: ArenaEventList::new(),
+            contact_tracker: ArenaContactTracker::default(),
+            events: ArenaEventList::default(),
         }
     }
 
@@ -283,7 +282,7 @@ impl Arena {
             .set_state(self.bullet_world.ball_mut(), ball_state);
     }
 
-    pub fn get_ball_state(&self) -> &BallState {
+    pub const fn get_ball_state(&self) -> &BallState {
         &self.ball.state
     }
 
