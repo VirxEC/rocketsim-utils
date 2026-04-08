@@ -213,7 +213,7 @@ fn main() {
             let current_point = path.sample(current_target_distance).pos();
             let local_current_point = phys.local_pos(current_point.extend(0.0).into());
             let distance = local_current_point.y;
-            if distance > 95.0 {
+            if distance > 45.0 {
                 ran_wide = true;
             }
 
