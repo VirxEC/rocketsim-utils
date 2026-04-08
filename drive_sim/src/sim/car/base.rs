@@ -36,19 +36,12 @@ impl Car {
             let front = i < 2;
             let left = i % 2 != 0;
 
-            let (wheel_config, suspension_force_scale) = if front {
-                (
-                    &config.front_wheels,
-                    vehicle_consts::SUSPENSION_FORCE_SCALE_FRONT,
-                )
+            let wheel_config = if front {
+                &config.front_wheels
             } else {
-                (
-                    &config.back_wheels,
-                    vehicle_consts::SUSPENSION_FORCE_SCALE_BACK,
-                )
+                &config.back_wheels
             };
 
-            bullet_vehicle.suspension_force_scale[i] = suspension_force_scale;
             let radius = wheel_config.wheel_radius;
             let suspension_rest_length =
                 wheel_config.suspension_rest_length - vehicle_consts::MAX_SUSPENSION_TRAVEL;
