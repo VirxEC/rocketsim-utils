@@ -8,6 +8,10 @@ RocketSim utils is a collection of various single-purpose tools that are at leas
 Simulates 1 ball, no cars, no boost pads. Requires collision meshes.
 6 seconds of simulation (720 ticks) takes about 25 microseconds on average on a 5900X, which is over 28 million TPS (in-game Ticks Per real-life Second).
 
+## ball_sim_cpp
+
+C++ bindings for `ball_sim` built with the CXX crate. Includes a CMake example project under `ball_sim_cpp/make_example` that builds the Rust static library via Cargo and links a C++ executable against it.
+
 ## car_sim
 
 Simulates 1 car driving on the floor with boost pads, no ball. Does not require collision meshes.

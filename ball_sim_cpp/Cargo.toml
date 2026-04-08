@@ -1,0 +1,19 @@
+[package]
+name = "ball_sim_cpp"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+ahash = "0.8.12"
+ball_sim = { path = "../ball_sim" }
+cxx = "1.0.194"
+glam = { workspace = true }
+
+[build-dependencies]
+cxx-build = "1.0"
+
+[lints]
+workspace = true
