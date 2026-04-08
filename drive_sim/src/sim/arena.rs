@@ -1,22 +1,27 @@
 use crate::{
     BoostPadConfig, BoostPadGrid, BoostPadState, Car, CarBodyConfig, CarControls, CarState,
-    GameMode, MutatorConfig,
-    bullet::dynamics::discrete_dynamics_world::DiscreteDynamicsWorld,
-    consts::{self, TICK_RATE, TICK_TIME},
-    sim::BoostPad,
+    GameMode, MutatorConfig, bullet::dynamics::discrete_dynamics_world::DiscreteDynamicsWorld,
+    consts, sim::BoostPad,
 };
 
 pub struct Arena {
     bullet_world: DiscreteDynamicsWorld,
     car: Car,
     tick_count: u64,
+    tps: f32,
+    tick_time: f32,
     game_mode: GameMode,
     mutator_config: MutatorConfig,
     boost_pad_grid: Option<BoostPadGrid>,
 }
 
 impl Arena {
-    pub fn new(game_mode: GameMode) -> Self {
+    pub fn new(game_mode: GameMode, tps: u8) -> Self {
+        assert!(
+            (30..=120).contains(&tps),
+            "tps must be between 30 and 120 inclusive"
+        );
+
         let mutator_config = MutatorConfig::new(game_mode);
 
         let (car, car_body) = Car::new(&mutator_config, CarBodyConfig::OCTANE);
@@ -50,11 +55,15 @@ impl Arena {
             None
         };
 
+        let tps = f32::from(tps);
+
         Self {
             game_mode,
             boost_pad_grid,
             mutator_config,
             tick_count: 0,
+            tps,
+            tick_time: 1. / tps,
             car,
             bullet_world,
         }
@@ -63,15 +72,19 @@ impl Arena {
     /// Steps the arena for 1 tick, returning the events produced during that tick
     pub fn step_tick(&mut self) {
         self.car
-            .pre_tick_update(&mut self.bullet_world, &self.mutator_config);
+            .pre_tick_update(&mut self.bullet_world, &self.mutator_config, self.tick_time);
 
-        self.bullet_world.step_simulation();
+        self.bullet_world.step_simulation(self.tick_time);
 
         self.car
             .finish_physics_tick(&mut self.bullet_world.collision_obj);
 
         if let Some(boost_pad_grid) = self.boost_pad_grid.as_mut() {
-            boost_pad_grid.maybe_give_car_boost(&mut self.car.state, self.tick_count);
+            boost_pad_grid.maybe_give_car_boost(
+                &mut self.car.state,
+                self.tick_count,
+                self.tick_time,
+            );
         }
 
         self.tick_count += 1;
@@ -118,7 +131,7 @@ impl Arena {
         let pad = self.boost_pads()[idx];
         let cooldown = pad.gave_boost_tick_count.map_or(0.0, |gave_boost_tick| {
             let max_cooldown = pad.max_cooldown;
-            let time_since = ((self.tick_count() - gave_boost_tick) as f32) * TICK_TIME;
+            let time_since = ((self.tick_count() - gave_boost_tick) as f32) * self.tick_time;
             (max_cooldown - time_since).max(0.0)
         });
 
@@ -131,7 +144,7 @@ impl Arena {
         let pad = &mut boost_pad_grid.all_pads[idx];
         if state.cooldown > 0.0 {
             let time_since_pickup = (pad.max_cooldown - state.cooldown).max(0.0);
-            let ticks_since_pickup = (time_since_pickup * TICK_RATE).round() as u64;
+            let ticks_since_pickup = (time_since_pickup * self.tps).round() as u64;
             pad.gave_boost_tick_count = Some(tick_count - ticks_since_pickup);
         } else {
             boost_pad_grid.all_pads[idx].gave_boost_tick_count = None;

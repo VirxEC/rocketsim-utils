@@ -138,149 +138,151 @@ fn get_throttle_and_boost(
 }
 
 fn main() {
-    const TRUNC_NUM_TICKS: u32 = 6 * 120;
     const STEER_REACTION_TIME: f32 = 0.3;
     const BOOST_ACCEL: f32 = 2975. / 3.;
 
     let sequence = generate_sequence();
     let num = sequence.len();
 
-    let tps = 120;
-    let mut num_frames = Vec::with_capacity(num);
-    let mut num_ran_wide = 0;
-    let mut num_runs_truncated = 0;
-    let mut num_missed = 0;
-    let mut num_ran_wide_and_truncated = 0;
-    let mut num_ran_wide_and_missed = 0;
+    for tps in [120, 90, 60] {
+        let trunc_num_ticks = 6 * u32::from(tps);
 
-    let mut arena = Arena::new(GameMode::Soccar);
+        let mut num_frames = Vec::with_capacity(num);
+        let mut num_ran_wide = 0;
+        let mut num_runs_truncated = 0;
+        let mut num_missed = 0;
+        let mut num_ran_wide_and_truncated = 0;
+        let mut num_ran_wide_and_missed = 0;
 
-    let start_time = Instant::now();
-    for (start, end) in sequence.iter().copied().progress() {
-        let max_speed = 2300.0;
-        let rho = turn_radius(max_speed);
-        let Ok(path) = DubinsPath::shortest_from(start, end, rho) else {
-            panic!("Couldn't find path between {start:?} and {end:?}");
-        };
-        let path_info = path.get_path_info();
+        let mut arena = Arena::new(GameMode::Soccar, tps);
 
-        // simulate following the path
-        let car = CarState {
-            phys: PhysState {
-                pos: start.pos().extend(REST_Z).into(),
-                vel: Vec3A::ZERO,
-                ang_vel: Vec3A::ZERO,
-                rot_mat: mat3a_from_direction(
-                    Vec3A::new(start.rot().cos(), start.rot().sin(), 0.0),
-                    Vec3A::Z,
-                ),
-            },
-            boost: 100.0,
-            ..CarState::DEFAULT
-        };
-        arena.set_car_state(car);
-
-        let mut frames_elapsed = 0;
-        let mut ran_wide = false;
-        let mut missed = false;
-        while frames_elapsed < TRUNC_NUM_TICKS {
-            let car = arena.get_car_state();
-
-            let phys = GlamPhysics {
-                pos: car.pos,
-                local_vel: car.rot_mat.mul_transpose_vec3a(car.vel),
-                local_ang_vel: car.rot_mat.mul_transpose_vec3a(car.ang_vel),
-                rot: car.rot_mat,
+        let start_time = Instant::now();
+        for (start, end) in sequence.iter().copied().progress() {
+            let max_speed = 2300.0;
+            let rho = turn_radius(max_speed);
+            let Ok(path) = DubinsPath::shortest_from(start, end, rho) else {
+                panic!("Couldn't find path between {start:?} and {end:?}");
             };
+            let path_info = path.get_path_info();
 
-            let local_end = phys.local_pos(end.pos().extend(0.0).into());
-            if local_end.x.abs() < 20.0 && local_end.y.abs() < 30.0 {
-                break;
+            // simulate following the path
+            let car = CarState {
+                phys: PhysState {
+                    pos: start.pos().extend(REST_Z).into(),
+                    vel: Vec3A::ZERO,
+                    ang_vel: Vec3A::ZERO,
+                    rot_mat: mat3a_from_direction(
+                        Vec3A::new(start.rot().cos(), start.rot().sin(), 0.0),
+                        Vec3A::Z,
+                    ),
+                },
+                boost: 100.0,
+                ..CarState::DEFAULT
+            };
+            arena.set_car_state(car);
+
+            let mut frames_elapsed = 0;
+            let mut ran_wide = false;
+            let mut missed = false;
+            while frames_elapsed < trunc_num_ticks {
+                let car = arena.get_car_state();
+
+                let phys = GlamPhysics {
+                    pos: car.pos,
+                    local_vel: car.rot_mat.mul_transpose_vec3a(car.vel),
+                    local_ang_vel: car.rot_mat.mul_transpose_vec3a(car.ang_vel),
+                    rot: car.rot_mat,
+                };
+
+                let local_end = phys.local_pos(end.pos().extend(0.0).into());
+                if local_end.x.abs() < 20.0 && local_end.y.abs() < 30.0 {
+                    break;
+                }
+
+                frames_elapsed += 1;
+
+                let path_length = path.length();
+                let current_target_distance =
+                    path_info.est_distance_traveled(phys.pos.truncate().into());
+                if (current_target_distance - path_length).abs() < f32::EPSILON
+                    && local_end.x.is_sign_negative()
+                {
+                    missed = true;
+                    break;
+                }
+
+                let current_point = path.sample(current_target_distance).pos();
+                let local_current_point = phys.local_pos(current_point.extend(0.0).into());
+                let distance = local_current_point.y;
+                if distance > 45.0 {
+                    ran_wide = true;
+                }
+
+                let limit = path_length;
+                let additional_distance = phys.local_vel.x.max(500.) * STEER_REACTION_TIME;
+                let target_distance = current_target_distance + additional_distance;
+                let point_on_path: Vec3A = path
+                    .sample(target_distance.min(limit))
+                    .pos()
+                    .extend(0.0)
+                    .into();
+
+                let drive_target = point_on_path;
+                let mut local_target_pos = phys.local_pos(drive_target);
+
+                let mut ctrls = CarControls::DEFAULT;
+                local_target_pos.z = 0.0;
+
+                let target_angle = local_target_pos.y.atan2(local_target_pos.x);
+                ctrls.steer = control_pid(target_angle, phys.local_ang_vel.z, distance);
+
+                (ctrls.throttle, ctrls.boost) = get_throttle_and_boost(
+                    BOOST_ACCEL,
+                    max_speed,
+                    phys.local_vel.x,
+                    target_angle,
+                    ctrls.handbrake,
+                );
+
+                arena.set_car_controls(ctrls);
+                arena.step_tick();
             }
 
-            frames_elapsed += 1;
-
-            let path_length = path.length();
-            let current_target_distance =
-                path_info.est_distance_traveled(phys.pos.truncate().into());
-            if (current_target_distance - path_length).abs() < f32::EPSILON
-                && local_end.x.is_sign_negative()
-            {
-                missed = true;
-                break;
+            num_frames.push(frames_elapsed);
+            if ran_wide {
+                num_ran_wide += 1;
             }
-
-            let current_point = path.sample(current_target_distance).pos();
-            let local_current_point = phys.local_pos(current_point.extend(0.0).into());
-            let distance = local_current_point.y;
-            if distance > 45.0 {
-                ran_wide = true;
+            if frames_elapsed >= trunc_num_ticks {
+                num_runs_truncated += 1;
             }
-
-            let limit = path_length;
-            let additional_distance = phys.local_vel.x.max(500.) * STEER_REACTION_TIME;
-            let target_distance = current_target_distance + additional_distance;
-            let point_on_path: Vec3A = path
-                .sample(target_distance.min(limit))
-                .pos()
-                .extend(0.0)
-                .into();
-
-            let drive_target = point_on_path;
-            let mut local_target_pos = phys.local_pos(drive_target);
-
-            let mut ctrls = CarControls::DEFAULT;
-            local_target_pos.z = 0.0;
-
-            let target_angle = local_target_pos.y.atan2(local_target_pos.x);
-            ctrls.steer = control_pid(target_angle, phys.local_ang_vel.z, distance);
-
-            (ctrls.throttle, ctrls.boost) = get_throttle_and_boost(
-                BOOST_ACCEL,
-                max_speed,
-                phys.local_vel.x,
-                target_angle,
-                ctrls.handbrake,
-            );
-
-            arena.set_car_controls(ctrls);
-            arena.step_tick();
+            if missed {
+                num_missed += 1;
+            }
+            if ran_wide && frames_elapsed >= trunc_num_ticks {
+                num_ran_wide_and_truncated += 1;
+            }
+            if ran_wide && missed {
+                num_ran_wide_and_missed += 1;
+            }
         }
 
-        num_frames.push(frames_elapsed);
-        if ran_wide {
-            num_ran_wide += 1;
-        }
-        if frames_elapsed >= TRUNC_NUM_TICKS {
-            num_runs_truncated += 1;
-        }
-        if missed {
-            num_missed += 1;
-        }
-        if ran_wide && frames_elapsed >= TRUNC_NUM_TICKS {
-            num_ran_wide_and_truncated += 1;
-        }
-        if ran_wide && missed {
-            num_ran_wide_and_missed += 1;
-        }
+        let irl_time_elapsed = start_time.elapsed().as_secs_f64();
+
+        num_frames.sort_unstable();
+        let ftps = f64::from(tps);
+        let total_frames = f64::from(num_frames.iter().sum::<u32>());
+        let sim_time_elapsed = total_frames / ftps;
+        let mean = total_frames / num as f64 / ftps;
+        let median = num_frames[num / 2] as f64 / ftps;
+        let max = num_frames[num - 1] as f64 / ftps;
+
+        let speedup = sim_time_elapsed / irl_time_elapsed;
+        let time_per_sim = irl_time_elapsed * 1_000_000.0 / num as f64;
+        println!(
+            "tps={tps} | Finished simulating {sim_time_elapsed:.2}s in {irl_time_elapsed:.2}s ({speedup:.0}x; {time_per_sim:.1}mus per), {mean:.4}s mean, {median:.4}s median, {max:.4}s max"
+        );
+        println!(
+            "\t{num_ran_wide} ran wide ({num_ran_wide_and_truncated} truncated, {num_ran_wide_and_missed} missed), {num_runs_truncated} truncated, {num_missed} missed"
+        );
     }
-
-    let irl_time_elapsed = start_time.elapsed().as_secs_f64();
-
-    num_frames.sort_unstable();
-    let tps = f64::from(tps);
-    let total_frames = f64::from(num_frames.iter().sum::<u32>());
-    let sim_time_elapsed = total_frames / tps;
-    let mean = total_frames / num as f64 / tps;
-    let median = num_frames[num / 2] as f64 / tps;
-    let max = num_frames[num - 1] as f64 / tps;
-
-    let speedup = sim_time_elapsed / irl_time_elapsed;
-    let time_per_sim = irl_time_elapsed * 1_000_000.0 / num as f64;
-    println!(
-        "tps={tps:.0} | Finished simulating {sim_time_elapsed:.2}s in {irl_time_elapsed:.2}s ({speedup:.0}x; {time_per_sim:.1}mus per), {mean:.4}s mean, {median:.4}s median, {max:.4}s max"
-    );
-    println!(
-        "{num_ran_wide} ran wide ({num_ran_wide_and_truncated} truncated, {num_ran_wide_and_missed} missed), {num_runs_truncated} truncated, {num_missed} missed"
-    );
 }

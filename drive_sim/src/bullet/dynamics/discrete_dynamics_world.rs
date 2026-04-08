@@ -10,10 +10,10 @@ pub struct DiscreteDynamicsWorld {
 }
 
 impl DiscreteDynamicsWorld {
-    pub fn step_simulation(&mut self) {
+    pub fn step_simulation(&mut self, tick_time: f32) {
         self.collision_obj.apply_central_force(GRAVITY);
-        self.collision_obj.lin_vel += self.collision_obj.total_force * consts::TICK_TIME;
-        self.collision_obj.integrate_trans();
+        self.collision_obj.lin_vel += self.collision_obj.total_force * tick_time;
+        self.collision_obj.integrate_trans(tick_time);
         self.collision_obj.clear_forces();
     }
 }

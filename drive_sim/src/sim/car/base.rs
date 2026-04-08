@@ -12,7 +12,7 @@ use crate::{
         linear_math::QuatExt,
     },
     consts::{
-        self, BT_TO_UU, TICK_TIME, UU_TO_BT, bullet_vehicle as vehicle_consts,
+        self, BT_TO_UU, UU_TO_BT, bullet_vehicle as vehicle_consts,
         car::{self as car_consts, drive as drive_consts},
         curves,
     },
@@ -90,14 +90,14 @@ impl Car {
         self.state = *state;
     }
 
-    fn update_wheels(&mut self, rb: &mut RigidBody, forward_speed_uu: f32) {
+    fn update_wheels(&mut self, rb: &mut RigidBody, forward_speed_uu: f32, tick_time: f32) {
         const STICKY_FORCE_SCALE: Vec3A = Vec3A::new(0.0, 0.0, 0.5 * consts::GRAVITY_Z * UU_TO_BT);
 
         let handbrake_delta = if self.state.controls.handbrake {
             drive_consts::POWERSLIDE_RISE_RATE
         } else {
             -drive_consts::POWERSLIDE_FALL_RATE
-        } * TICK_TIME;
+        } * tick_time;
         self.state.handbrake_val = (self.state.handbrake_val + handbrake_delta).clamp(0.0, 1.0);
 
         let mut real_brake = 0.0;
@@ -213,7 +213,7 @@ impl Car {
         rb.apply_central_force(STICKY_FORCE_SCALE);
     }
 
-    fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
+    fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig, tick_time: f32) {
         self.state.is_boosting = if self.state.boost > 0.0 {
             self.state.controls.boost
                 || (self.state.is_boosting
@@ -223,21 +223,21 @@ impl Car {
         };
 
         if self.state.is_boosting {
-            self.state.boosting_time += TICK_TIME;
+            self.state.boosting_time += tick_time;
             self.state.time_since_boosted = 0.0;
-            self.state.boost -= mutator_config.boost_used_per_second * TICK_TIME;
+            self.state.boost -= mutator_config.boost_used_per_second * tick_time;
 
             rb.apply_central_force(
                 self.state.get_forward_dir() * (consts::car::boost::ACCEL_GROUND * UU_TO_BT),
             );
         } else {
             self.state.boosting_time = 0.0;
-            self.state.time_since_boosted += TICK_TIME;
+            self.state.time_since_boosted += tick_time;
 
             if mutator_config.recharge_boost_enabled
                 && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
             {
-                self.state.boost += mutator_config.recharge_boost_per_second * TICK_TIME;
+                self.state.boost += mutator_config.recharge_boost_per_second * tick_time;
             }
         }
 
@@ -248,6 +248,7 @@ impl Car {
         &mut self,
         collision_world: &mut DiscreteDynamicsWorld,
         mutator_config: &MutatorConfig,
+        tick_time: f32,
     ) {
         self.state.controls = self.state.controls.clamp();
         let forward_speed_uu = collision_world.collision_obj.get_forward_speed() * BT_TO_UU;
@@ -256,11 +257,19 @@ impl Car {
         self.bullet_vehicle
             .update_vehicle_first(&collision_world.collision_obj);
 
-        self.update_wheels(&mut collision_world.collision_obj, forward_speed_uu);
+        self.update_wheels(
+            &mut collision_world.collision_obj,
+            forward_speed_uu,
+            tick_time,
+        );
 
         self.bullet_vehicle
-            .update_vehicle_second(&mut collision_world.collision_obj, TICK_TIME);
-        self.update_boost(&mut collision_world.collision_obj, mutator_config);
+            .update_vehicle_second(&mut collision_world.collision_obj, tick_time);
+        self.update_boost(
+            &mut collision_world.collision_obj,
+            mutator_config,
+            tick_time,
+        );
     }
 
     pub fn finish_physics_tick(&mut self, rb: &mut RigidBody) {

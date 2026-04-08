@@ -2,8 +2,6 @@ use std::f32::consts::FRAC_PI_4;
 
 use glam::{Affine3A, Mat3A, Quat, Vec3A, Vec4};
 
-use crate::consts::TICK_TIME;
-
 pub struct RigidBody {
     world_trans: Affine3A,
     quat_trans: Quat,
@@ -111,27 +109,26 @@ impl RigidBody {
         self.total_force += force;
     }
 
-    pub fn integrate_trans(&mut self) {
-        const ANGULAR_MOTION_THRESHOLD: f32 = FRAC_PI_4 / TICK_TIME;
-
-        self.world_trans.translation += self.lin_vel * TICK_TIME;
+    pub fn integrate_trans(&mut self, tick_time: f32) {
+        self.world_trans.translation += self.lin_vel * tick_time;
 
         let mut angle = self.ang_vel.length();
 
-        if angle > ANGULAR_MOTION_THRESHOLD {
-            angle = ANGULAR_MOTION_THRESHOLD;
+        let angular_motion_threshold = FRAC_PI_4 / tick_time;
+        if angle > angular_motion_threshold {
+            angle = angular_motion_threshold;
         }
 
         let axis = if angle < 0.001 {
             self.ang_vel
-                * (0.5 * TICK_TIME - TICK_TIME * TICK_TIME * TICK_TIME * 0.020_833_334)
+                * (0.5 * tick_time - tick_time * tick_time * tick_time * 0.020_833_334)
                 * angle
                 * angle
         } else {
-            self.ang_vel * ((0.5 * angle * TICK_TIME).sin() / angle)
+            self.ang_vel * ((0.5 * angle * tick_time).sin() / angle)
         };
 
-        let dorn = Quat::from_xyzw(axis.x, axis.y, axis.z, (angle * TICK_TIME * 0.5).cos());
+        let dorn = Quat::from_xyzw(axis.x, axis.y, axis.z, (angle * tick_time * 0.5).cos());
         self.quat_trans = (dorn * self.quat_trans).normalize();
         self.world_trans.matrix3 = Mat3A::from_quat(self.quat_trans);
 

@@ -1,6 +1,6 @@
 use crate::{
     BoostPad, BoostPadConfig, CarState, MutatorConfig,
-    consts::{TICK_TIME, boost_pads, car},
+    consts::{boost_pads, car},
     shared::{Aabb, bvh},
 };
 
@@ -8,6 +8,7 @@ pub struct BoostPadProcessor<'a> {
     all_pads: &'a mut [BoostPad],
     car_state: &'a mut CarState,
     tick_count: u64,
+    tick_time: f32,
     pad_idx: Option<usize>,
 }
 
@@ -20,7 +21,7 @@ impl<'a> bvh::ProcessNode for BoostPadProcessor<'a> {
         let pad = &mut self.all_pads[pad_idx];
 
         if let Some(last_give_tick_count) = pad.gave_boost_tick_count
-            && ((self.tick_count - last_give_tick_count) as f32 * TICK_TIME) < pad.max_cooldown
+            && ((self.tick_count - last_give_tick_count) as f32 * self.tick_time) < pad.max_cooldown
         {
             return;
         }
@@ -106,6 +107,7 @@ impl BoostPadGrid {
         &mut self,
         car_state: &mut CarState,
         tick_count: u64,
+        tick_time: f32,
     ) -> Option<usize> {
         if car_state.boost >= car::boost::MAX {
             return None; // Already full on boost
@@ -121,6 +123,7 @@ impl BoostPadGrid {
             all_pads: &mut self.all_pads,
             car_state,
             tick_count,
+            tick_time,
             pad_idx: None,
         };
         self.bvh_tree
