@@ -16,10 +16,12 @@ use crate::{
 pub const NUM_WHEELS: usize = 4;
 const SUSPENSION_TRAVEL: f32 = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
 
+#[derive(Default)]
 pub struct VehicleRL {
     pub wheels: [WheelInfo; NUM_WHEELS],
     pub engine_force: f32,
     pub brake: f32,
+    pub suspension_force_scale: Vec4,
     pub lat_friction: [f32; 4],
     pub long_friction: [f32; 4],
     pub impulse: [Vec4; 3],
@@ -27,18 +29,6 @@ pub struct VehicleRL {
 }
 
 impl VehicleRL {
-    pub fn new(wheels: [WheelInfo; NUM_WHEELS]) -> Self {
-        Self {
-            wheels,
-            engine_force: 0.0,
-            brake: 0.0,
-            lat_friction: [1.0; 4],
-            long_friction: [1.0; 4],
-            impulse: [Vec4::ZERO; 3],
-            contact_point_ws: [Vec4::ZERO; 3],
-        }
-    }
-
     fn calc_friction_impulses(&mut self, chassis: &RigidBody, friction_scale: f32) {
         const ROLLING_FRICTION_SCALE: f32 = 113.73963;
 
@@ -191,11 +181,53 @@ impl VehicleRL {
         self.calc_friction_impulses(chassis, chassis.mass / 3.0);
     }
 
-    pub fn update_vehicle_second(&mut self, cb: &mut RigidBody, step: f32) {
-        for wheel in &mut self.wheels {
-            wheel.update_suspension(cb, step);
+    fn update_suspension(&mut self, cb: &mut RigidBody, delta_time: f32) {
+        const COMPRESSION_DAMPING: Vec4 = Vec4::splat(bullet_vehicle::WHEELS_DAMPING_COMPRESSION);
+        const RELAXATION_DAMPING: Vec4 = Vec4::splat(bullet_vehicle::WHEELS_DAMPING_RELAXATION);
+
+        let mut rest_len = [0.0; 4];
+        let mut susp_len = [0.0; 4];
+        let mut rel_vel = [0.0; 4];
+
+        for (i, wheel) in self.wheels.iter().enumerate() {
+            rest_len[i] = wheel.suspension_rest_length_1;
+            susp_len[i] = wheel.suspension_length;
+            rel_vel[i] = wheel.suspension_relative_vel;
         }
 
+        let [rest_len, susp_len, rel_vel] = to_simd(&[rest_len, susp_len, rel_vel]);
+
+        let force = (rest_len - susp_len) * bullet_vehicle::SUSPENSION_STIFFNESS;
+
+        let damping_vel_scale = Vec4::select(
+            rel_vel.cmplt(Vec4::ZERO),
+            COMPRESSION_DAMPING,
+            RELAXATION_DAMPING,
+        );
+
+        let suspension_force = (force - damping_vel_scale * rel_vel) * self.suspension_force_scale;
+        let suspension_force = suspension_force.max(Vec4::ZERO) * delta_time;
+
+        let trans = cb.get_world_trans();
+        let rel_x = self.contact_point_ws[0] - trans.translation.x;
+        let rel_y = self.contact_point_ws[1] - trans.translation.y;
+
+        let total_force =
+            suspension_force.x + suspension_force.y + suspension_force.z + suspension_force.w;
+        cb.lin_vel.z += total_force * cb.inverse_mass;
+
+        let torque_x = rel_y * suspension_force;
+        let torque_y = -rel_x * suspension_force;
+
+        let total_torque_x = torque_x.x + torque_x.y + torque_x.z + torque_x.w;
+        let total_torque_y = torque_y.x + torque_y.y + torque_y.z + torque_y.w;
+
+        cb.ang_vel += cb.inv_inertia_tensor_world.x_axis * total_torque_x
+            + cb.inv_inertia_tensor_world.y_axis * total_torque_y;
+    }
+
+    pub fn update_vehicle_second(&mut self, cb: &mut RigidBody, step: f32) {
+        self.update_suspension(cb, step);
         self.apply_friction_impulses(cb, step);
     }
 }

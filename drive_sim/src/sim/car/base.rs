@@ -33,9 +33,9 @@ impl Car {
 
         let body = RigidBody::new(Vec3A::ZERO, local_inertia, car_consts::MASS_BT);
 
-        let mut wheels = [WheelInfo::default(); NUM_WHEELS];
+        let mut bullet_vehicle = VehicleRL::default();
 
-        for (i, wheel) in wheels.iter_mut().enumerate() {
+        for (i, wheel) in bullet_vehicle.wheels.iter_mut().enumerate() {
             let front = i < 2;
             let left = i % 2 != 0;
 
@@ -51,6 +51,7 @@ impl Car {
                 )
             };
 
+            bullet_vehicle.suspension_force_scale[i] = suspension_force_scale;
             let radius = wheel_config.wheel_radius;
             let suspension_rest_length =
                 wheel_config.suspension_rest_length - vehicle_consts::MAX_SUSPENSION_TRAVEL;
@@ -65,7 +66,6 @@ impl Car {
                 wheel_ray_start_offset * UU_TO_BT,
                 suspension_rest_length * UU_TO_BT,
                 radius * UU_TO_BT,
-                suspension_force_scale,
             );
 
             wheel.update_wheel_trans::<true>(body.get_world_trans());
@@ -73,7 +73,7 @@ impl Car {
 
         (
             Self {
-                bullet_vehicle: VehicleRL::new(wheels),
+                bullet_vehicle,
                 state: CarState {
                     boost: mutator_config.car_spawn_boost_amount,
                     ..Default::default()

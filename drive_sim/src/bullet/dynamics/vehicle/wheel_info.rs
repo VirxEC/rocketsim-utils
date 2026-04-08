@@ -19,10 +19,8 @@ pub struct WheelInfo {
     chassis_connection_point_cs: Vec3A,
     pub suspension_length: f32,
     pub suspension_rest_length_1: f32,
-    pub suspension_force_scale: f32,
     pub wheel_radius: f32,
     pub suspension_relative_vel: f32,
-    pub wheels_suspension_force: f32,
     pub raycast_info: RaycastInfo,
     pub axle_dir: Vec3A,
     pub steering_orn: Quat,
@@ -33,18 +31,15 @@ impl WheelInfo {
         chassis_connection_point_cs: Vec3A,
         suspension_rest_length_1: f32,
         wheel_radius: f32,
-        suspension_force_scale: f32,
     ) -> Self {
         Self {
             suspension_rest_length_1,
             wheel_radius,
             chassis_connection_point_cs,
-            suspension_force_scale,
             suspension_length: 0.0,
             raycast_info: RaycastInfo::default(),
             axle_dir: Vec3A::ZERO,
             suspension_relative_vel: 0.0,
-            wheels_suspension_force: 0.0,
             steering_orn: Quat::IDENTITY,
         }
     }
@@ -77,32 +72,5 @@ impl WheelInfo {
 
         let vel_at_contact_point = chassis.get_vel_in_local_point(rel_pos);
         self.suspension_relative_vel = vel_at_contact_point.z;
-    }
-
-    pub fn update_suspension(&mut self, cb: &mut RigidBody, delta_time: f32) {
-        let force = (self.suspension_rest_length_1 - self.suspension_length)
-            * bullet_vehicle::SUSPENSION_STIFFNESS;
-
-        let damping_vel_scale = if self.suspension_relative_vel < 0.0 {
-            bullet_vehicle::WHEELS_DAMPING_COMPRESSION
-        } else {
-            bullet_vehicle::WHEELS_DAMPING_RELAXATION
-        };
-
-        self.wheels_suspension_force = force - (damping_vel_scale * self.suspension_relative_vel);
-
-        self.wheels_suspension_force *= self.suspension_force_scale;
-        self.wheels_suspension_force = self.wheels_suspension_force.max(0.0);
-
-        if self.wheels_suspension_force == 0.0 {
-            return;
-        }
-
-        let base_force_scale = self.wheels_suspension_force * delta_time;
-        let contact_point_offset =
-            self.raycast_info.contact_point_ws - cb.get_world_trans().translation;
-
-        let force = Vec3A::new(0.0, 0.0, base_force_scale);
-        cb.apply_impulse(force, contact_point_offset);
     }
 }
