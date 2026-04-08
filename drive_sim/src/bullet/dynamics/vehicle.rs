@@ -39,8 +39,8 @@ pub struct VehicleRL {
     suspension_length: Vec4,
     suspension_relative_vel: Vec4,
     pub wheel_radius: Vec4,
-    pub lat_friction: [f32; 4],
-    pub long_friction: [f32; 4],
+    pub lat_friction: Vec4,
+    pub long_friction: Vec4,
     impulse: [Vec4; 3],
 }
 
@@ -78,8 +78,8 @@ impl VehicleRL {
             Vec4::splat(self.engine_force / friction_scale)
         };
 
-        let rf = -rolling_friction * Vec4::from_array(self.long_friction);
-        let si = side_impulse * Vec4::from_array(self.lat_friction);
+        let rf = -rolling_friction * self.long_friction;
+        let si = side_impulse * self.lat_friction;
 
         let total_x = axle_x * si - axle_y * rf;
         let total_y = axle_x * rf + axle_y * si;

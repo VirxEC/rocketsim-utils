@@ -138,13 +138,11 @@ impl Car {
         }
 
         let drive_speed_scale = curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
-
-        let drive_engine_force = engine_throttle
+        self.bullet_vehicle.engine_force = engine_throttle
             * const { drive_consts::THROTTLE_TORQUE_AMOUNT * UU_TO_BT }
             * drive_speed_scale;
-        let drive_brake_force = real_brake * const { drive_consts::BRAKE_TORQUE_AMOUNT * UU_TO_BT };
-        self.bullet_vehicle.engine_force = drive_engine_force;
-        self.bullet_vehicle.brake = drive_brake_force;
+        self.bullet_vehicle.brake =
+            real_brake * const { drive_consts::BRAKE_TORQUE_AMOUNT * UU_TO_BT };
 
         let mut steer_angle = curves::STEER_ANGLE_FROM_SPEED.get_output(abs_forward_speed_uu);
         if self.state.handbrake_val != 0.0 {
@@ -187,29 +185,37 @@ impl Car {
             (cross_vec_x * lat_dir_x + cross_vec_y * lat_dir_y + cross_vec_z * lat_dir_z).abs();
         let long_dot = (cross_vec_x * lat_dir_y - cross_vec_y * lat_dir_x).abs();
 
+        let mut friction_curve_input = base_friction / (long_dot + base_friction);
+        friction_curve_input = Vec4::select(
+            base_friction.cmpge(Vec4::splat(5.0)),
+            friction_curve_input,
+            Vec4::ZERO,
+        );
+
+        let mut lat_friction = [0.0; 4];
+
         for i in 0..NUM_WHEELS {
-            let base_friction = base_friction[i];
-            let friction_curve_input = if base_friction > 5.0 {
-                base_friction / (long_dot[i] + base_friction)
-            } else {
-                0.0
-            };
+            lat_friction[i] = curves::LAT_FRICTION.get_output(friction_curve_input[i]);
+        }
 
-            let mut lat_friction = curves::LAT_FRICTION.get_output(friction_curve_input);
-            let mut long_friction = 1.0;
+        let mut lat_friction = Vec4::from_array(lat_friction);
+        let mut long_friction = Vec4::ONE;
 
-            if self.state.handbrake_val != 0.0 {
-                lat_friction *=
-                    1.0 - curves::HANDBRAKE_LAT_FRICTION_FACTOR * self.state.handbrake_val;
-                long_friction *= 1.0
-                    + (curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input)
-                        - 1.0)
-                        * self.state.handbrake_val;
+        if self.state.handbrake_val != 0.0 {
+            lat_friction *= 1.0 - curves::HANDBRAKE_LAT_FRICTION_FACTOR * self.state.handbrake_val;
+
+            let mut handbrake_long_friction = [0.0; 4];
+            for i in 0..NUM_WHEELS {
+                handbrake_long_friction[i] =
+                    curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input[i]);
             }
 
-            self.bullet_vehicle.lat_friction[i] = lat_friction;
-            self.bullet_vehicle.long_friction[i] = long_friction;
+            long_friction *=
+                1.0 + (Vec4::from_array(handbrake_long_friction) - 1.0) * self.state.handbrake_val;
         }
+
+        self.bullet_vehicle.lat_friction = lat_friction;
+        self.bullet_vehicle.long_friction = long_friction;
 
         rb.apply_central_force(STICKY_FORCE_SCALE);
     }

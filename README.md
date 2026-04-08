@@ -11,4 +11,4 @@ Simulates 1 ball, no cars, no boost pads. Requires collision meshes.
 ## car_sim
 
 Simulates 1 car driving on the floor with boost pads, no ball. Does not require collision meshes.
-6 seconds of simulation (720 ticks) takes about 175 microseconds on average on a 5900X, which is over 4 million TPS (in-game Ticks Per real-life Second).
+6 seconds of simulation (720 ticks) takes about 150 microseconds on average on a 5900X, which is over 4.5 million TPS (in-game Ticks Per real-life Second).
