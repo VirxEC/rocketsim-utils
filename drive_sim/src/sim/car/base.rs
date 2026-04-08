@@ -73,7 +73,7 @@ impl Car {
 
         (
             Self {
-                bullet_vehicle: VehicleRL { wheels },
+                bullet_vehicle: VehicleRL::new(wheels),
                 state: CarState {
                     boost: mutator_config.car_spawn_boost_amount,
                     ..Default::default()
@@ -148,10 +148,8 @@ impl Car {
             * const { drive_consts::THROTTLE_TORQUE_AMOUNT * UU_TO_BT }
             * drive_speed_scale;
         let drive_brake_force = real_brake * const { drive_consts::BRAKE_TORQUE_AMOUNT * UU_TO_BT };
-        for wheel in &mut self.bullet_vehicle.wheels {
-            wheel.engine_force = drive_engine_force;
-            wheel.brake = drive_brake_force;
-        }
+        self.bullet_vehicle.engine_force = drive_engine_force;
+        self.bullet_vehicle.brake = drive_brake_force;
 
         let mut steer_angle = curves::STEER_ANGLE_FROM_SPEED.get_output(abs_forward_speed_uu);
         if self.state.handbrake_val != 0.0 {
@@ -210,7 +208,7 @@ impl Car {
             (cross_vec_x * lat_dir_x + cross_vec_y * lat_dir_y + cross_vec_z * lat_dir_z).abs();
         let long_dot = (cross_vec_x * lat_dir_y - cross_vec_y * lat_dir_x).abs();
 
-        for (i, wheel) in self.bullet_vehicle.wheels.iter_mut().enumerate() {
+        for i in 0..NUM_WHEELS {
             let base_friction = base_friction[i];
             let friction_curve_input = if base_friction > 5.0 {
                 base_friction / (long_dot[i] + base_friction)
@@ -230,8 +228,8 @@ impl Car {
                         * self.state.handbrake_val;
             }
 
-            wheel.lat_friction = lat_friction;
-            wheel.long_friction = long_friction;
+            self.bullet_vehicle.lat_friction[i] = lat_friction;
+            self.bullet_vehicle.long_friction[i] = long_friction;
         }
 
         rb.apply_central_force(STICKY_FORCE_SCALE);
