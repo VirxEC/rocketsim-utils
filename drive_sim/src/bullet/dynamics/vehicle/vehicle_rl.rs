@@ -17,15 +17,22 @@ pub const NUM_WHEELS: usize = 4;
 const SUSPENSION_TRAVEL: f32 = bullet_vehicle::MAX_SUSPENSION_TRAVEL * UU_TO_BT;
 
 #[derive(Default)]
+struct RaycastInfo {
+    contact_point_ws: [Vec4; 3],
+    // hard_point_ws: [Vec4; 3],
+    // wheel_direction_ws: [Vec4; 3],
+}
+
+#[derive(Default)]
 pub struct VehicleRL {
     pub wheels: [WheelInfo; NUM_WHEELS],
+    raycast_info: RaycastInfo,
     pub engine_force: f32,
     pub brake: f32,
     pub suspension_force_scale: Vec4,
     pub lat_friction: [f32; 4],
     pub long_friction: [f32; 4],
-    pub impulse: [Vec4; 3],
-    pub contact_point_ws: [Vec4; 3],
+    impulse: [Vec4; 3],
 }
 
 impl VehicleRL {
@@ -46,9 +53,9 @@ impl VehicleRL {
         let [axle_x, axle_y, axle_z] = to_simd(&[axle_x, axle_y, axle_z]);
 
         let chassis_pos = chassis.get_world_trans().translation;
-        let rel_x = self.contact_point_ws[0] - chassis_pos.x;
-        let rel_y = self.contact_point_ws[1] - chassis_pos.y;
-        let rel_z = self.contact_point_ws[2] - chassis_pos.z;
+        let rel_x = self.raycast_info.contact_point_ws[0] - chassis_pos.x;
+        let rel_y = self.raycast_info.contact_point_ws[1] - chassis_pos.y;
+        let rel_z = self.raycast_info.contact_point_ws[2] - chassis_pos.z;
 
         let avx = Vec4::splat(chassis.ang_vel.x);
         let avy = Vec4::splat(chassis.ang_vel.y);
@@ -89,9 +96,9 @@ impl VehicleRL {
 
     fn apply_friction_impulses(&self, cb: &mut RigidBody, time_step: f32) {
         let trans = cb.get_world_trans();
-        let rel_x = self.contact_point_ws[0] - trans.translation.x;
-        let rel_y = self.contact_point_ws[1] - trans.translation.y;
-        let rel_z = self.contact_point_ws[2] - trans.translation.z;
+        let rel_x = self.raycast_info.contact_point_ws[0] - trans.translation.x;
+        let rel_y = self.raycast_info.contact_point_ws[1] - trans.translation.y;
+        let rel_z = self.raycast_info.contact_point_ws[2] - trans.translation.z;
 
         let up_x = Vec4::splat(trans.matrix3.z_axis.x);
         let up_y = Vec4::splat(trans.matrix3.z_axis.y);
@@ -171,7 +178,7 @@ impl VehicleRL {
         let (sources, targets) = self.get_raycast_info_simd();
 
         let ray_results = StaticPlaneShape::perform_raycast(&sources, &targets);
-        self.contact_point_ws = ray_results;
+        self.raycast_info.contact_point_ws = ray_results;
 
         let ray_results = from_simd(&ray_results);
         for (i, wheel) in self.wheels.iter_mut().enumerate() {
@@ -209,8 +216,8 @@ impl VehicleRL {
         let suspension_force = suspension_force.max(Vec4::ZERO) * delta_time;
 
         let trans = cb.get_world_trans();
-        let rel_x = self.contact_point_ws[0] - trans.translation.x;
-        let rel_y = self.contact_point_ws[1] - trans.translation.y;
+        let rel_x = self.raycast_info.contact_point_ws[0] - trans.translation.x;
+        let rel_y = self.raycast_info.contact_point_ws[1] - trans.translation.y;
 
         let total_force =
             suspension_force.x + suspension_force.y + suspension_force.z + suspension_force.w;
