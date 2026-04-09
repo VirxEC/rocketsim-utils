@@ -163,6 +163,7 @@ fn main() {
             let Ok(path) = DubinsPath::shortest_from(start, end, rho) else {
                 panic!("Couldn't find path between {start:?} and {end:?}");
             };
+            let sampler = path.get_path_sampler();
             let path_info = path.get_path_info();
 
             // simulate following the path
@@ -211,7 +212,7 @@ fn main() {
                     break;
                 }
 
-                let current_point = path.sample(current_target_distance).pos();
+                let current_point = sampler.sample(current_target_distance).pos();
                 let local_current_point = phys.local_pos(current_point.extend(0.0).into());
                 let distance = local_current_point.y;
                 if distance > 45.0 {
@@ -221,7 +222,7 @@ fn main() {
                 let limit = path_length;
                 let additional_distance = phys.local_vel.x.max(500.) * STEER_REACTION_TIME;
                 let target_distance = current_target_distance + additional_distance;
-                let point_on_path: Vec3A = path
+                let point_on_path: Vec3A = sampler
                     .sample(target_distance.min(limit))
                     .pos()
                     .extend(0.0)
