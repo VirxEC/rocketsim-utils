@@ -22,14 +22,14 @@ fn vec_to_simd(vecs: [Vec3A; 4]) -> [Vec4; 3] {
     ]
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct RaycastInfo {
     pub hard_point_ws: [Vec4; 3],
     contact_point_ws: [Vec4; 3],
     wheel_direction_ws: Vec3A,
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct VehicleRL {
     pub steering_orn: [Quat; 2],
     pub raycast_info: RaycastInfo,

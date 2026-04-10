@@ -13,6 +13,7 @@ use crate::{
 pub const CONTACT_BREAKING_THRESHOLD: f32 = 0.02;
 pub const MANIFOLD_CACHE_SIZE: usize = 4;
 
+#[derive(Clone, Debug)]
 pub struct PersistentManifold {
     pub point_cache: ArrayVec<ManifoldPoint, MANIFOLD_CACHE_SIZE>,
     pub contact_breaking_threshold: f32,

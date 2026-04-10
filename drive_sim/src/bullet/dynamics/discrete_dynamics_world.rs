@@ -5,6 +5,7 @@ use crate::consts;
 
 const GRAVITY: Vec3A = Vec3A::new(0.0, 0.0, consts::GRAVITY_Z * consts::UU_TO_BT);
 
+#[derive(Clone, Copy, Debug)]
 pub struct DiscreteDynamicsWorld {
     pub collision_obj: RigidBody,
 }

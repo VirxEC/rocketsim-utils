@@ -6,6 +6,7 @@ use crate::{
 
 pub const SPHERE_RADIUS_MARGIN: f32 = 0.08;
 
+#[derive(Clone, Copy, Debug)]
 pub struct SphereShape {
     radius: f32,
     extent: Vec3A,

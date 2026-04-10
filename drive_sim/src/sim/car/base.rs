@@ -18,6 +18,7 @@ use crate::{
     },
 };
 
+#[derive(Clone, Copy, Debug)]
 pub struct Car {
     pub bullet_vehicle: VehicleRL,
     pub state: CarState,

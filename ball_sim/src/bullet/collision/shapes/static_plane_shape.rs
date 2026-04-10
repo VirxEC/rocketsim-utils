@@ -2,6 +2,7 @@ use glam::Vec3A;
 
 use crate::{bullet::linear_math::LARGE_FLOAT, shared::Aabb};
 
+#[derive(Clone, Copy, Debug)]
 pub struct StaticPlaneShape {
     plane_normal: Vec3A,
     pub aabb_cache: Aabb,

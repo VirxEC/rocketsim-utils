@@ -12,6 +12,7 @@ pub struct ContactRecord {
     pub manifold_point: ManifoldPoint,
 }
 
+#[derive(Clone, Debug)]
 // A struct to be accessed through the bullet contact callbacks
 pub struct ArenaContactTracker {
     collision_records: Vec<ContactRecord>,

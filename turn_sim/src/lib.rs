@@ -7,6 +7,7 @@ use crate::{car_controls::CarControls, consts::car};
 pub mod car_controls;
 pub mod consts;
 
+#[derive(Clone, Copy, Debug)]
 pub struct Car {
     pub rot: Quat,
     pub ang_vel: Vec3A,

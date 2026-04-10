@@ -2,6 +2,7 @@ use std::f32::consts::FRAC_PI_4;
 
 use glam::{Affine3A, Mat3A, Quat, Vec3A, Vec4};
 
+#[derive(Clone, Copy, Debug)]
 pub struct RigidBody {
     world_trans: Affine3A,
     quat_trans: Quat,

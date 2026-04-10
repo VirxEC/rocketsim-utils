@@ -9,6 +9,7 @@ use crate::{
     },
 };
 
+#[derive(Clone, Debug)]
 pub struct HashedOverlappingPairCache {
     overlapping_pair_array: ArrayVec<usize, 4>,
 }

@@ -20,6 +20,7 @@ impl RigidBodyConstructionInfo {
     }
 }
 
+#[derive(Clone)]
 pub struct RigidBody {
     world_trans: Vec3A,
     shape: CollisionShapes,

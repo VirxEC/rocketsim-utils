@@ -12,6 +12,7 @@ use crate::{
     },
 };
 
+#[derive(Clone, Debug)]
 pub struct CollisionDispatcher {
     pub manifolds: ArrayVec<PersistentManifold, 4>,
 }

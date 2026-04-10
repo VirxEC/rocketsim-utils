@@ -13,6 +13,7 @@ use crate::{
     sim::consts,
 };
 
+#[derive(Clone, Copy, Debug)]
 pub struct Ball {
     pub state: BallState,
     pub ground_stick_applied: bool,

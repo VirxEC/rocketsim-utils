@@ -10,6 +10,7 @@ use crate::bullet::{
     linear_math::plane_space_1,
 };
 
+#[derive(Clone, Copy, Debug)]
 struct SpecialResolveInfo {
     pub num_special_collisions: u16,
     pub total_normal: Vec3A,
@@ -36,6 +37,7 @@ impl SpecialResolveInfo {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct SeqImpulseConstraintSolver {
     solver_body: SolverBody,
     contact_constraint: Option<(SolverConstraint, SolverConstraint)>,

@@ -20,6 +20,7 @@ use crate::{
     sim::{Ball, BallState, arena::ArenaEventList},
 };
 
+#[derive(Clone)]
 pub struct Arena {
     bullet_world: DiscreteDynamicsWorld,
     ball: Ball,

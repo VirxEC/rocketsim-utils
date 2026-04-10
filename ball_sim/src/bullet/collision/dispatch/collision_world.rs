@@ -12,6 +12,7 @@ use crate::{
     },
 };
 
+#[derive(Clone)]
 pub struct CollisionWorld {
     pub ball_obj: SphereRigidBody,
     collision_objs: Vec<RigidBody>,

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use super::{bvh_triangle_mesh_shape::BvhTriangleMeshShape, static_plane_shape::StaticPlaneShape};
 use crate::shared::Aabb;
 
+#[derive(Clone)]
 pub enum CollisionShapes {
     StaticPlane(StaticPlaneShape),
     TriangleMesh(Arc<BvhTriangleMeshShape>),

@@ -1,6 +1,6 @@
 use glam::Vec3A;
 
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct ManifoldPoint {
     pub local_point_a: Vec3A,
     pub local_point_b: Vec3A,

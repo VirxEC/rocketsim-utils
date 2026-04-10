@@ -17,6 +17,7 @@ use crate::{
     },
 };
 
+#[derive(Clone)]
 pub struct DiscreteDynamicsWorld {
     collision_world: CollisionWorld,
     solver: SeqImpulseConstraintSolver,

@@ -26,6 +26,7 @@ impl SphereRigidBodyConstructionInfo {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct SphereRigidBody {
     world_trans: Vec3A,
     shape: SphereShape,

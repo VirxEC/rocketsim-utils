@@ -4,6 +4,7 @@ use crate::{
     consts, sim::BoostPad,
 };
 
+#[derive(Clone, Debug)]
 pub struct Arena {
     bullet_world: DiscreteDynamicsWorld,
     car: Car,

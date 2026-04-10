@@ -14,6 +14,7 @@ use crate::{
     shared::Aabb,
 };
 
+#[derive(Clone, Copy, Debug)]
 pub struct GridBroadphaseProxy {
     /// The index of the client `RigidBody` in `CollisionWorld`
     pub client_obj_idx: usize,
@@ -21,6 +22,7 @@ pub struct GridBroadphaseProxy {
     cell_idx: usize,
 }
 
+#[derive(Clone, Debug)]
 struct GridCell {
     static_handles: ArrayVec<usize, 4>,
 }
@@ -33,6 +35,7 @@ impl GridCell {
     }
 }
 
+#[derive(Clone, Debug)]
 struct CellGrid {
     max_pos: Vec3A,
     min_pos: Vec3A,
@@ -134,6 +137,7 @@ impl CellGrid {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct GridBroadphase {
     cell_grid: CellGrid,
     handles: Vec<GridBroadphaseProxy>,

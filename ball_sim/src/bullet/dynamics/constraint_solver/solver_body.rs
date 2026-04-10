@@ -5,6 +5,7 @@ use crate::bullet::dynamics::{
     sphere_rigid_body::SphereRigidBody,
 };
 
+#[derive(Clone, Copy, Debug)]
 pub struct SolverBody {
     pub delta_lin_vel: Vec3A,
     pub delta_ang_vel: Vec3A,
