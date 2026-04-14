@@ -45,7 +45,7 @@ impl MutatorConfig {
             },
             unlimited_flips: false,
             unlimited_double_jumps: false,
-            recharge_boost_enabled: matches!(game_mode, GameMode::Snowday),
+            recharge_boost_enabled: matches!(game_mode, GameMode::Dropshot),
             recharge_boost_per_second: consts::car::boost::RECHARGE_PER_SECOND,
             recharge_boost_delay: consts::car::boost::RECHARGE_DELAY,
         }

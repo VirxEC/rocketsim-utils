@@ -9,7 +9,6 @@ use crate::bullet::collision::collision_world::CollisionWorld;
 pub struct DiscreteDynamicsWorld {
     collision_world: CollisionWorld,
     solver: SeqImpulseConstraintSolver,
-    non_static_rigid_bodies: Vec<usize>,
     gravity: Vec3A,
 }
 
@@ -19,7 +18,6 @@ impl DiscreteDynamicsWorld {
             collision_world: CollisionWorld::new(),
             solver: constraint_solver,
             gravity: Vec3A::new(0.0, -10.0, 0.0),
-            non_static_rigid_bodies: Vec::with_capacity(8),
         }
     }
 
@@ -42,23 +40,17 @@ impl DiscreteDynamicsWorld {
             body.set_gravity(self.gravity);
         }
 
-        let rb_idx = self.add_collision_obj(body);
-        self.non_static_rigid_bodies.push(rb_idx);
-
-        rb_idx
+        self.add_collision_obj(body)
     }
 
     fn apply_gravity(&mut self) {
-        for &body in &self.non_static_rigid_bodies {
-            let body = &mut self.collision_world.collision_objs[body];
+        for body in &mut self.collision_world.collision_objs {
             body.apply_gravity();
         }
     }
 
     fn predict_unconstraint_motion(&mut self, time_step: f32) {
-        for &body in &self.non_static_rigid_bodies {
-            let body = &mut self.collision_world.collision_objs[body];
-
+        for body in &mut self.collision_world.collision_objs {
             body.apply_damping(time_step);
             let predicted_trans = body.predict_integration_trans(time_step);
             body.interp_world_trans = predicted_trans;
@@ -67,31 +59,20 @@ impl DiscreteDynamicsWorld {
 
     #[inline]
     fn solve_constraints(&mut self, time_step: f32) {
-        self.solver.solve_group(
-            &mut self.collision_world.collision_objs,
-            &self.non_static_rigid_bodies,
-            time_step,
-        );
+        self.solver
+            .solve_group(&mut self.collision_world.collision_objs, time_step);
     }
 
-    fn integrate_transs_internal(&mut self, time_step: f32) {
-        for &body in &self.non_static_rigid_bodies {
-            let body = &mut self.collision_world.collision_objs[body];
-
+    fn integrate_transs(&mut self, time_step: f32) {
+        for body in &mut self.collision_world.collision_objs {
             let predicted_trans = body.predict_integration_trans(time_step);
             body.set_center_of_mass_trans(predicted_trans);
         }
     }
 
-    fn integrate_transs(&mut self, time_step: f32) {
-        if !self.non_static_rigid_bodies.is_empty() {
-            self.integrate_transs_internal(time_step);
-        }
-    }
-
     fn clear_forces(&mut self) {
-        for &body in &self.non_static_rigid_bodies {
-            self.collision_world.collision_objs[body].clear_forces();
+        for body in &mut self.collision_world.collision_objs {
+            body.clear_forces();
         }
     }
 

@@ -12,7 +12,7 @@ pub struct SolverBody {
     pub ang_vel: Vec3A,
     pub external_force_impulse: Vec3A,
     pub external_torque_impulse: Vec3A,
-    pub original_body: Option<usize>,
+    pub original_body: usize,
 }
 
 impl SolverBody {
@@ -27,7 +27,7 @@ impl SolverBody {
             ang_vel: rb.ang_vel,
             external_force_impulse: rb.total_force * rb.inverse_mass * time_step,
             external_torque_impulse: rb.inv_inertia_tensor_world * rb.total_torque * time_step,
-            original_body: Some(rb.world_array_idx),
+            original_body: rb.world_array_idx,
         }
     }
 }
