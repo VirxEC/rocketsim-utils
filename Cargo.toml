@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["drive_sim", "ball_sim", "ball_sim_cpp", "turn_sim"]
+members = ["air_sim", "ball_sim", "ball_sim_cpp", "drive_sim", "turn_sim"]
 
 [workspace.package]
 version = "0.1.0"

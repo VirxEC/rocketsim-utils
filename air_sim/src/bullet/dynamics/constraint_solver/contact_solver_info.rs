@@ -1,0 +1,1 @@
+pub const SPLIT_IMPULSE_TURN_ERP: f32 = 0.1;

@@ -1,0 +1,10 @@
+[package]
+name = "air_sim"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+glam.workspace = true
+
+[lints]
+workspace = true
