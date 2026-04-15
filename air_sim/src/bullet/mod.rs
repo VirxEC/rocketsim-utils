@@ -1,3 +1,3 @@
-pub mod collision;
-pub mod dynamics;
-pub mod linear_math;
+pub mod box_shape;
+pub mod rigid_body;
+pub mod transform_util;

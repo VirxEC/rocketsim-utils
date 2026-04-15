@@ -2,63 +2,60 @@ use glam::{Affine3A, Vec3A};
 
 use crate::{
     CarBodyConfig, CarControls, CarState, MutatorConfig,
-    bullet::{
-        collision::box_shape::calculate_local_intertia, dynamics::rigid_body::RigidBody,
-        linear_math::Mat3AExt,
-    },
-    consts::{BT_TO_UU, TICK_TIME, UU_TO_BT, car as car_consts},
+    bullet::{box_shape::calculate_local_intertia, rigid_body::RigidBody},
+    consts::{BT_TO_UU, UU_TO_BT, car as car_consts},
 };
 
 pub struct Car {
-    pub(crate) config: CarBodyConfig,
-    pub(crate) vel_impulse_cache: Vec3A,
-    pub(crate) state: CarState,
+    config: CarBodyConfig,
+    state: CarState,
+    pub body: RigidBody,
+    tick_time: f32,
 }
 
 impl Car {
-    pub(crate) fn new(mutator_config: &MutatorConfig, config: CarBodyConfig) -> (Self, RigidBody) {
+    pub(crate) fn new(
+        mutator_config: &MutatorConfig,
+        gravity: Vec3A,
+        config: CarBodyConfig,
+        tick_time: f32,
+    ) -> Self {
         let local_inertia =
             calculate_local_intertia(config.hitbox_size * UU_TO_BT * 0.5, mutator_config.car_mass);
-        let body = RigidBody::new(mutator_config.car_mass, local_inertia);
+        let body = RigidBody::new(mutator_config.car_mass, gravity, local_inertia);
 
-        let car = Self {
+        Self {
             config,
-            vel_impulse_cache: Vec3A::ZERO,
             state: CarState {
                 boost: mutator_config.car_spawn_boost_amount,
                 ..Default::default()
             },
-        };
-
-        (car, body)
+            body,
+            tick_time,
+        }
     }
 
     pub const fn get_state(&self) -> &CarState {
         &self.state
     }
 
-    pub const fn get_config(&self) -> &CarBodyConfig {
-        &self.config
-    }
-
     pub const fn set_controls(&mut self, new_controls: CarControls) {
         self.state.controls = new_controls;
     }
 
-    pub(crate) fn set_state(&mut self, rb: &mut RigidBody, state: &CarState) {
-        rb.set_center_of_mass_trans(Affine3A {
+    pub(crate) fn set_state(&mut self, state: &CarState) {
+        self.body.set_center_of_mass_trans(Affine3A {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
 
-        rb.lin_vel = state.phys.vel * UU_TO_BT;
-        rb.ang_vel = state.phys.ang_vel;
+        self.body.lin_vel = state.phys.vel * UU_TO_BT;
+        self.body.ang_vel = state.phys.ang_vel;
 
-        self.vel_impulse_cache = Vec3A::ZERO;
         self.state = *state;
     }
 
-    fn update_air_torque(&mut self, rb: &mut RigidBody) {
+    fn update_air_torque(&mut self) {
         let forward_dir = self.state.get_forward_dir();
         let right_dir = self.state.get_right_dir();
         let up_dir = self.state.get_up_dir();
@@ -92,10 +89,10 @@ impl Car {
                 let dodge_torque = rel_dodge_torque
                     * const { Vec3A::new(car_consts::flip::TORQUE_X, car_consts::flip::TORQUE_Y, 0.0) };
 
-                let rb_torque = rb.inv_inertia_tensor_world.bullet_inverse()
-                    * rb.get_world_trans().matrix3
+                let rb_torque = self.body.inv_inertia_tensor_world.inverse()
+                    * self.body.world_trans.matrix3
                     * dodge_torque;
-                rb.apply_torque(rb_torque);
+                self.body.apply_torque(rb_torque);
             }
         } else {
             do_air_control = true;
@@ -128,7 +125,7 @@ impl Car {
                 Vec3A::ZERO
             };
 
-            let ang_vel = rb.ang_vel;
+            let ang_vel = self.body.ang_vel;
 
             let damp_pitch = dir_pitch.dot(ang_vel)
                 * car_consts::air_control::DAMPING.x
@@ -140,14 +137,14 @@ impl Car {
 
             let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
 
-            let rb_torque = rb.inv_inertia_tensor_world.bullet_inverse()
+            let rb_torque = self.body.inv_inertia_tensor_world.inverse()
                 * (torque - damping)
                 * car_consts::air_control::TORQUE_APPLY_SCALE;
-            rb.apply_torque(rb_torque);
+            self.body.apply_torque(rb_torque);
         }
 
         if self.state.controls.throttle != 0.0 {
-            rb.apply_central_force(
+            self.body.apply_central_force(
                 forward_dir
                     * self.state.controls.throttle
                     * const { car_consts::drive::THROTTLE_AIR_ACCEL * UU_TO_BT * car_consts::MASS_BT },
@@ -157,15 +154,14 @@ impl Car {
 
     fn update_double_jump_or_flip(
         &mut self,
-        rb: &mut RigidBody,
         mutator_config: &MutatorConfig,
         jump_pressed: bool,
         forward_speed_uu: f32,
     ) {
-        self.state.air_time += TICK_TIME;
+        self.state.air_time += self.tick_time;
 
         if self.state.has_jumped && !self.state.is_jumping {
-            self.state.air_time_since_jump += TICK_TIME;
+            self.state.air_time_since_jump += self.tick_time;
         } else {
             self.state.air_time_since_jump = 0.0;
         }
@@ -242,33 +238,34 @@ impl Car {
                         let final_delta_vel = initial_dodge_vel.x * forward_dir_2d
                             + initial_dodge_vel.y * right_dir_2d;
 
-                        rb.apply_central_impulse(
+                        self.body.apply_central_impulse(
                             final_delta_vel * const { UU_TO_BT * car_consts::MASS_BT },
                         );
                     }
                 } else {
                     let jump_start_force = self.state.get_up_dir()
                         * const { car_consts::jump::IMMEDIATE_FORCE * UU_TO_BT * car_consts::MASS_BT };
-                    rb.apply_central_impulse(jump_start_force);
+                    self.body.apply_central_impulse(jump_start_force);
                     self.state.has_double_jumped = true;
                 }
             }
         }
 
         if self.state.is_flipping {
-            self.state.flip_time += TICK_TIME;
+            self.state.flip_time += self.tick_time;
             if self.state.flip_time <= car_consts::flip::TORQUE_TIME
                 && self.state.flip_time >= car_consts::flip::Z_DAMP_START
-                && (rb.lin_vel.z < 0.0 || self.state.flip_time < car_consts::flip::Z_DAMP_END)
+                && (self.body.lin_vel.z < 0.0
+                    || self.state.flip_time < car_consts::flip::Z_DAMP_END)
             {
-                rb.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
+                self.body.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
             }
         } else if self.state.has_flipped {
-            self.state.flip_time += TICK_TIME;
+            self.state.flip_time += self.tick_time;
         }
     }
 
-    fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
+    fn update_boost(&mut self, mutator_config: &MutatorConfig) {
         self.state.is_boosting = if self.state.boost > 0.0 {
             self.state.controls.boost
                 || (self.state.is_boosting
@@ -278,86 +275,70 @@ impl Car {
         };
 
         if self.state.is_boosting {
-            self.state.boosting_time += TICK_TIME;
+            self.state.boosting_time += self.tick_time;
             self.state.time_since_boosted = 0.0;
-            self.state.boost -= mutator_config.boost_used_per_second * TICK_TIME;
+            self.state.boost -= mutator_config.boost_used_per_second * self.tick_time;
 
-            rb.apply_central_force(
+            self.body.apply_central_force(
                 mutator_config.boost_accel_air
                     * self.state.get_forward_dir()
                     * (UU_TO_BT * car_consts::MASS_BT),
             );
         } else {
             self.state.boosting_time = 0.0;
-            self.state.time_since_boosted += TICK_TIME;
+            self.state.time_since_boosted += self.tick_time;
 
             if mutator_config.recharge_boost_enabled
                 && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
             {
-                self.state.boost += mutator_config.recharge_boost_per_second * TICK_TIME;
+                self.state.boost += mutator_config.recharge_boost_per_second * self.tick_time;
             }
         }
 
         self.state.boost = self.state.boost.clamp(0.0, car_consts::boost::MAX);
     }
 
-    pub(crate) fn pre_tick_update(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
+    pub(crate) fn pre_tick_update(&mut self, mutator_config: &MutatorConfig) {
         self.state.controls = self.state.controls.clamp();
-        let forward_speed_uu = rb.get_forward_speed() * BT_TO_UU;
+        let forward_speed_uu = self.body.get_forward_speed() * BT_TO_UU;
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
 
-        self.update_air_torque(rb);
-        self.update_double_jump_or_flip(rb, mutator_config, jump_pressed, forward_speed_uu);
-        self.update_boost(rb, mutator_config);
+        self.update_air_torque();
+        self.update_double_jump_or_flip(mutator_config, jump_pressed, forward_speed_uu);
+        self.update_boost(mutator_config);
     }
 
-    pub(crate) fn post_tick_update(&mut self, rb: &RigidBody) {
-        self.state.phys.rot_mat = rb.get_world_trans().matrix3;
-
-        let speed_squared = (rb.lin_vel * BT_TO_UU).length_squared();
-        self.state.is_supersonic = speed_squared
-            >= if self.state.is_supersonic
-                && self.state.supersonic_time < car_consts::supersonic::MAINTAIN_MAX_TIME
-            {
-                const {
-                    car_consts::supersonic::MAINTAIN_MIN_SPEED
-                        * car_consts::supersonic::MAINTAIN_MIN_SPEED
-                }
-            } else {
-                const { car_consts::supersonic::START_SPEED * car_consts::supersonic::START_SPEED }
-            };
-
-        if self.state.is_supersonic {
-            self.state.supersonic_time += TICK_TIME;
-        } else {
-            self.state.supersonic_time = 0.0;
-        }
-
+    pub(crate) fn post_tick_update(&mut self) {
+        self.state.phys.rot_mat = self.body.world_trans.matrix3;
+        self.state.phys.rot_quat = self.body.world_rotation;
+        self.state.phys.pos = self.body.world_trans.translation * BT_TO_UU;
         self.state.prev_controls = self.state.controls;
     }
 
-    pub(crate) fn finish_physics_tick(&mut self, rb: &mut RigidBody) {
+    pub(crate) fn finish_physics_tick(&mut self) {
         const MAX_SPEED: f32 = car_consts::MAX_SPEED * UU_TO_BT;
 
-        if self.vel_impulse_cache != Vec3A::ZERO {
-            rb.lin_vel += self.vel_impulse_cache * UU_TO_BT;
-            self.vel_impulse_cache = Vec3A::ZERO;
+        let lin_vel_len_sq = self.body.lin_vel.length_squared();
+        if lin_vel_len_sq > const { MAX_SPEED * MAX_SPEED } {
+            self.body.lin_vel = self.body.lin_vel / lin_vel_len_sq.sqrt() * MAX_SPEED;
         }
 
-        let vel = &mut rb.lin_vel;
-        if vel.length_squared() > const { MAX_SPEED * MAX_SPEED } {
-            *vel = vel.normalize_or_zero() * MAX_SPEED;
+        let ang_vel_len_sq = self.body.ang_vel.length_squared();
+        if ang_vel_len_sq > const { car_consts::MAX_ANG_SPEED * car_consts::MAX_ANG_SPEED } {
+            self.body.ang_vel =
+                self.body.ang_vel / ang_vel_len_sq.sqrt() * car_consts::MAX_ANG_SPEED;
         }
 
-        let ang_vel = &mut rb.ang_vel;
-        if ang_vel.length_squared()
-            > const { car_consts::MAX_ANG_SPEED * car_consts::MAX_ANG_SPEED }
-        {
-            *ang_vel = ang_vel.normalize_or_zero() * car_consts::MAX_ANG_SPEED;
-        }
+        self.state.phys.vel = self.body.lin_vel * BT_TO_UU;
+        self.state.phys.ang_vel = self.body.ang_vel;
+    }
 
-        self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;
-        self.state.phys.vel = rb.lin_vel * BT_TO_UU;
-        self.state.phys.ang_vel = rb.ang_vel;
+    pub fn step_tick(&mut self, mutator_config: &MutatorConfig) {
+        self.pre_tick_update(mutator_config);
+
+        self.body.step_simulation(self.tick_time);
+
+        self.post_tick_update();
+        self.finish_physics_tick();
     }
 }

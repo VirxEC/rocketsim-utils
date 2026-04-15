@@ -1,9 +1,10 @@
-use glam::{Affine3A, Mat3A, Vec3A};
+use glam::{Affine3A, Mat3A, Quat, Vec3A};
 
-use crate::bullet::linear_math::transform_util::integrate_trans;
+use crate::bullet::transform_util::integrate_trans;
 
 pub struct RigidBody {
-    world_trans: Affine3A,
+    pub world_trans: Affine3A,
+    pub world_rotation: Quat,
     pub inv_inertia_tensor_world: Mat3A,
     pub lin_vel: Vec3A,
     pub ang_vel: Vec3A,
@@ -15,7 +16,7 @@ pub struct RigidBody {
 }
 
 impl RigidBody {
-    pub fn new(mass: f32, local_inertia: Vec3A) -> Self {
+    pub fn new(mass: f32, gravity: Vec3A, local_inertia: Vec3A) -> Self {
         let inverse_mass = 1.0 / mass;
 
         let inv_inertia_local = Vec3A::select(
@@ -28,37 +29,16 @@ impl RigidBody {
 
         Self {
             world_trans: Affine3A::IDENTITY,
+            world_rotation: Quat::IDENTITY,
             inv_inertia_tensor_world,
             lin_vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
             inverse_mass,
-            gravity: Vec3A::ZERO,
+            gravity: gravity * mass,
             inv_inertia_local,
             total_force: Vec3A::ZERO,
             total_torque: Vec3A::ZERO,
         }
-    }
-
-    pub const fn set_world_trans(&mut self, world_trans: Affine3A) {
-        self.world_trans = world_trans;
-    }
-
-    pub const fn get_world_trans(&self) -> &Affine3A {
-        &self.world_trans
-    }
-
-    pub fn set_gravity(&mut self, acceleration: Vec3A) {
-        self.gravity = acceleration * (1.0 / self.inverse_mass);
-    }
-
-    pub fn set_lin_vel(&mut self, lin_vel: Vec3A) {
-        debug_assert!(!lin_vel.is_nan());
-        self.lin_vel = lin_vel;
-    }
-
-    pub fn set_ang_vel(&mut self, ang_vel: Vec3A) {
-        debug_assert!(!ang_vel.is_nan());
-        self.ang_vel = ang_vel;
     }
 
     fn get_inertia_tensor(world_mat: Mat3A, inv_inertia_local: Vec3A) -> Mat3A {
@@ -72,7 +52,7 @@ impl RigidBody {
 
     pub fn update_inertia_tensor(&mut self) {
         self.inv_inertia_tensor_world =
-            Self::get_inertia_tensor(self.get_world_trans().matrix3, self.inv_inertia_local);
+            Self::get_inertia_tensor(self.world_trans.matrix3, self.inv_inertia_local);
     }
 
     pub fn apply_torque(&mut self, torque: Vec3A) {
@@ -95,7 +75,9 @@ impl RigidBody {
     }
 
     pub fn integration_trans(&mut self, time_step: f32) {
-        integrate_trans(&mut self.world_trans, self.lin_vel, self.ang_vel, time_step);
+        self.world_trans.translation += self.lin_vel * time_step;
+        integrate_trans(&mut self.world_rotation, self.ang_vel, time_step);
+        self.world_trans.matrix3 = Mat3A::from_quat(self.world_rotation);
         self.update_inertia_tensor();
     }
 
@@ -110,6 +92,16 @@ impl RigidBody {
     }
 
     pub fn get_forward_speed(&self) -> f32 {
-        self.lin_vel.dot(self.get_world_trans().matrix3.x_axis)
+        self.lin_vel.dot(self.world_trans.matrix3.x_axis)
+    }
+
+    pub fn step_simulation(&mut self, time_step: f32) {
+        self.apply_gravity();
+
+        self.lin_vel += self.total_force * self.inverse_mass * time_step;
+        self.ang_vel += self.inv_inertia_tensor_world * self.total_torque * time_step;
+
+        self.integration_trans(time_step);
+        self.clear_forces();
     }
 }

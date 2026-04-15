@@ -105,7 +105,9 @@ mod aerial {
         Arena, CarControls, CarState,
         consts::{GRAVITY_Z, car},
     };
-    use glam::{Mat3A, Quat, Vec3A};
+    use glam::{Quat, Vec3A};
+
+    use crate::Rotator;
 
     const ANGLE_THREASHOLD: f32 = 0.25;
 
@@ -115,30 +117,33 @@ mod aerial {
 
     pub fn simulate_aerial(
         arena: &mut Arena,
-        start_pos: Vec3A,
-        target_pos: Vec3A,
-        vel: Vec3A,
-        ang_vel: Vec3A,
-        start_rot: Mat3A,
-        eta: f32,
+        (start_pos, target_pos, vel, ang_vel, start_rot, eta): (
+            Vec3A,
+            Vec3A,
+            Vec3A,
+            Vec3A,
+            Rotator,
+            f32,
+        ),
+        tps: u8,
     ) -> u16 {
-        const TPS: f32 = 120.0;
-        const DT: f32 = 1.0 / TPS;
-
         let mut car = CarState::DEFAULT;
         car.pos = start_pos;
         car.vel = vel;
         car.ang_vel = ang_vel;
-        car.rot_mat = start_rot;
+        car.rot_mat = start_rot.into_mat3a();
         arena.set_car_state(car);
 
-        let num_ticks = (eta * TPS) as u16;
+        let tps = f32::from(tps);
+        let dt = 1.0 / tps;
+
+        let num_ticks = (eta * tps) as u16;
         for i in (0..num_ticks).rev() {
             let mut car = *arena.get_car_state();
             car.boost = 100.0;
             arena.set_car_state(car);
 
-            let t = f32::from(i) * DT;
+            let t = f32::from(i) * dt;
             let xf = car.pos + car.vel * t + 0.5 * Vec3A::new(0.0, 0.0, GRAVITY_Z) * t * t;
             let target_dir = target_pos - xf;
 
@@ -147,8 +152,8 @@ mod aerial {
                 Quat::from_mat3a(&car.rot_mat),
                 car.ang_vel,
                 target_dir,
-                DT,
-                TPS,
+                dt,
+                tps,
                 &mut ctrls,
             );
 
@@ -163,7 +168,7 @@ mod aerial {
                     ctrls.throttle = 1.0;
                 } else {
                     ctrls.throttle =
-                        (delta_v / (car::drive::THROTTLE_AIR_ACCEL * DT)).clamp(-1.0, 1.0);
+                        (delta_v / (car::drive::THROTTLE_AIR_ACCEL * dt)).clamp(-1.0, 1.0);
                 }
             }
 
@@ -237,35 +242,24 @@ fn generate_sequence() -> Vec<(Vec3A, Vec3A, Vec3A, Vec3A, Rotator, f32)> {
 }
 
 fn main() {
-    let mut arena = Arena::new_with_config(
-        MutatorConfig {
-            boost_used_per_second: 0.0,
-            car_spawn_boost_amount: 100.0,
-            ..MutatorConfig::new(GameMode::Soccar)
-        },
-        CarBodyConfig::OCTANE,
-    );
-
     let sequence = generate_sequence();
     let num = sequence.len();
 
-    for tps in [120] {
+    for tps in [120, 60] {
+        let mut arena = Arena::new_with_config(
+            MutatorConfig {
+                boost_used_per_second: 0.0,
+                car_spawn_boost_amount: 100.0,
+                ..MutatorConfig::new(GameMode::Soccar)
+            },
+            CarBodyConfig::OCTANE,
+            tps,
+        );
         let mut num_frames = Vec::with_capacity(num);
 
         let start_time = Instant::now();
-        for (start_pos, target_pos, vel, ang_vel, start_rot, eta) in
-            sequence.iter().copied().progress()
-        {
-            let start_orientation = start_rot.into_mat3a();
-            let frames_elapsed = aerial::simulate_aerial(
-                &mut arena,
-                start_pos,
-                target_pos,
-                vel,
-                ang_vel,
-                start_orientation,
-                eta,
-            );
+        for random_args in sequence.iter().copied().progress() {
+            let frames_elapsed = aerial::simulate_aerial(&mut arena, random_args, tps);
             num_frames.push(u32::from(frames_elapsed));
         }
 
@@ -275,15 +269,12 @@ fn main() {
         let tps = f64::from(tps);
         let total_frames = f64::from(num_frames.iter().sum::<u32>());
         let sim_time_elapsed = total_frames / tps;
-        let mean = total_frames / num as f64 / tps;
-        let median = num_frames[num / 2] as f64 / tps;
-        let max = num_frames[num - 1] as f64 / tps;
 
         let speedup = sim_time_elapsed / irl_time_elapsed;
         let time_per_sim = irl_time_elapsed * 1_000_000.0 / num as f64;
         let sim_ticks_per_irl_sec = total_frames / irl_time_elapsed;
         println!(
-            "tps={tps:.0} | Finished simulating {sim_time_elapsed:.2}s in {irl_time_elapsed:.2}s ({speedup:.0}x; {time_per_sim:.1}mus per, {sim_ticks_per_irl_sec:.0}tps), {mean:.4}s mean, {median:.4}s median, {max:.4}s max"
+            "tps={tps:.0} | Finished simulating {sim_time_elapsed:.2}s in {irl_time_elapsed:.2}s ({speedup:.0}x; {time_per_sim:.1}mus per, {sim_ticks_per_irl_sec:.0}tps)"
         );
     }
 }

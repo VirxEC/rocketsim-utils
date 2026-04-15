@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use glam::{Mat3A, Vec3A};
+use glam::{Mat3A, Quat, Vec3A};
 
 use crate::{CarControls, PhysState};
 
@@ -11,10 +11,6 @@ pub struct CarState {
     pub controls: CarControls,
     /// Controls from the last time this car was simulated (equals `controls` after step)
     pub prev_controls: CarControls,
-    /// Whether each of the 4 wheels have contact
-    /// First two are front
-    /// If your car has 3 wheels, the 4th bool will always be false
-    pub wheels_with_contact: [bool; 4],
     /// Whether we jumped to get into the air
     ///
     /// Can be false while airborne, if we left the ground with a flip reset
@@ -50,9 +46,6 @@ pub struct CarState {
     /// There exists a minimum boosting time, thus why we must track boosting time
     pub is_boosting: bool,
     pub boosting_time: f32,
-    pub is_supersonic: bool,
-    /// Time spent supersonic, for checking with the supersonic maintain time
-    pub supersonic_time: f32,
 }
 
 impl Default for CarState {
@@ -66,12 +59,12 @@ impl CarState {
         phys: PhysState {
             pos: Vec3A::new(0.0, 0.0, crate::sim::consts::car::spawn::REST_Z),
             rot_mat: Mat3A::IDENTITY,
+            rot_quat: Quat::IDENTITY,
             vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
         },
         controls: CarControls::DEFAULT,
         prev_controls: CarControls::DEFAULT,
-        wheels_with_contact: [false; 4],
         has_jumped: false,
         has_double_jumped: false,
         has_flipped: false,
@@ -86,8 +79,6 @@ impl CarState {
         time_since_boosted: 0.0,
         is_boosting: false,
         boosting_time: 0.0,
-        is_supersonic: false,
-        supersonic_time: 0.0,
     };
 
     pub const fn has_flip_or_jump(&self) -> bool {
