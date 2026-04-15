@@ -139,9 +139,7 @@ mod aerial {
 
         let num_ticks = (eta * tps) as u16;
         for i in (0..num_ticks).rev() {
-            let mut car = *arena.get_car_state();
-            car.boost = 100.0;
-            arena.set_car_state(car);
+            let car = arena.get_car_state();
 
             let t = f32::from(i) * dt;
             let xf = car.pos + car.vel * t + 0.5 * Vec3A::new(0.0, 0.0, GRAVITY_Z) * t * t;
