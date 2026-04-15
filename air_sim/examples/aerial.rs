@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, time::Instant};
 
-use air_sim::consts::car;
+use air_sim::{Arena, CarBodyConfig, GameMode, MutatorConfig, consts::car};
 use glam::{Mat3A, Vec3A};
 use indicatif::ProgressIterator;
 use rand::{
@@ -102,51 +102,44 @@ mod reorient {
 
 mod aerial {
     use air_sim::{
-        CarControls,
+        Arena, CarControls, CarState,
         consts::{GRAVITY_Z, car},
     };
     use glam::{Mat3A, Quat, Vec3A};
 
-    const ANGLE_THREASHOLD: f32 = 0.1;
-    const AIR_THROTTLE_ACCEL: f32 = 66.0 + (2.0 / 3.0);
+    const ANGLE_THREASHOLD: f32 = 0.25;
 
     fn angle(v1: Vec3A, v2: Vec3A) -> f32 {
         v1.dot(v2).acos()
     }
 
-    pub fn simulate_aerial_rsim(
-        arena: &mut rocketsim::Arena,
+    pub fn simulate_aerial(
+        arena: &mut Arena,
         start_pos: Vec3A,
         target_pos: Vec3A,
         vel: Vec3A,
         ang_vel: Vec3A,
         start_rot: Mat3A,
+        eta: f32,
     ) -> u16 {
         const TPS: f32 = 120.0;
         const DT: f32 = 1.0 / TPS;
 
-        let mut car = rocketsim::CarState::DEFAULT;
+        let mut car = CarState::DEFAULT;
         car.pos = start_pos;
         car.vel = vel;
         car.ang_vel = ang_vel;
         car.rot_mat = start_rot;
-        arena.set_car_state(0, car);
+        arena.set_car_state(car);
 
-        let mut num_ticks = 0;
-        loop {
-            let mut car = *arena.get_car_state(0);
+        let num_ticks = (eta * TPS) as u16;
+        for i in (0..num_ticks).rev() {
+            let mut car = *arena.get_car_state();
             car.boost = 100.0;
-            arena.set_car_state(0, car);
+            arena.set_car_state(car);
 
-            let car_to_target_dist = (target_pos - car.pos).length();
-            dbg!(car_to_target_dist);
-            if car_to_target_dist < 10.0 {
-                break;
-            }
-
-            let est = car_to_target_dist / car.vel.length().max(500.0);
-
-            let xf = car.pos + car.vel * est + 0.5 * Vec3A::new(0.0, 0.0, GRAVITY_Z) * est * est;
+            let t = f32::from(i) * DT;
+            let xf = car.pos + car.vel * t + 0.5 * Vec3A::new(0.0, 0.0, GRAVITY_Z) * t * t;
             let target_dir = target_pos - xf;
 
             let mut ctrls = CarControls::DEFAULT;
@@ -162,32 +155,20 @@ mod aerial {
             let direction = target_dir.normalize();
             if angle(car.rot_mat.x_axis, direction) < ANGLE_THREASHOLD {
                 let s = target_dir.dot(car.rot_mat.x_axis);
-                let delta_v = s / est;
+                let delta_v = s / t;
 
                 let accel_diff = car::boost::ACCEL_AIR * car::boost::MIN_TIME;
                 if delta_v > accel_diff {
                     ctrls.boost = true;
                     ctrls.throttle = 1.0;
                 } else {
-                    ctrls.throttle = (delta_v / (AIR_THROTTLE_ACCEL * DT)).clamp(-1.0, 1.0);
+                    ctrls.throttle =
+                        (delta_v / (car::drive::THROTTLE_AIR_ACCEL * DT)).clamp(-1.0, 1.0);
                 }
             }
 
-            arena.set_car_controls(
-                0,
-                rocketsim::CarControls {
-                    throttle: ctrls.throttle,
-                    steer: 0.0,
-                    pitch: ctrls.pitch,
-                    yaw: ctrls.yaw,
-                    roll: ctrls.roll,
-                    boost: ctrls.boost,
-                    jump: ctrls.jump,
-                    handbrake: false,
-                },
-            );
+            arena.set_car_controls(ctrls);
 
-            num_ticks += 1;
             arena.step_tick();
         }
 
@@ -195,26 +176,27 @@ mod aerial {
     }
 }
 
-fn generate_sequence() -> Vec<(Vec3A, Vec3A, Vec3A, Vec3A, Rotator)> {
+fn generate_sequence() -> Vec<(Vec3A, Vec3A, Vec3A, Vec3A, Rotator, f32)> {
     let mut rot_rng = SmallRng::seed_from_u64(0).sample_iter(Uniform::new(-TAU, TAU).unwrap());
     let mut ang_rng = SmallRng::seed_from_u64(1).sample_iter(Uniform::new(-TAU, TAU).unwrap());
     let mut ang_vel_rng = SmallRng::seed_from_u64(2)
         .sample_iter(Uniform::new(-car::MAX_ANG_SPEED, car::MAX_ANG_SPEED).unwrap());
     let mut pos_rng =
-        SmallRng::seed_from_u64(3).sample_iter(Uniform::new(-4000.0, 4000.0).unwrap());
+        SmallRng::seed_from_u64(3).sample_iter(Uniform::new(-2000.0, 2000.0).unwrap());
     let mut end_rng_dir = SmallRng::seed_from_u64(4).sample_iter(StandardUniform);
     let mut end_rng_mag =
-        SmallRng::seed_from_u64(5).sample_iter(Uniform::new(0.0, 4000.0).unwrap());
+        SmallRng::seed_from_u64(5).sample_iter(Uniform::new(0.0, 2000.0).unwrap());
     let mut vel_rng = SmallRng::seed_from_u64(6)
         .sample_iter(Uniform::new(-car::MAX_SPEED, car::MAX_SPEED).unwrap());
+    let mut eta_rng = SmallRng::seed_from_u64(7).sample_iter(Uniform::new(0.5, 6.0).unwrap());
 
-    // (0..1_000)
-    (0..1)
+    // (0..1)
+    (0..50_000)
         .map(|_| {
             let start_pos = Vec3A::new(
                 pos_rng.next().unwrap(),
                 pos_rng.next().unwrap(),
-                pos_rng.next().unwrap() / 2.0 + 2000.0,
+                pos_rng.next().unwrap() / 2.0 + 1000.0,
             );
             let target_pos_dir = Vec3A::new(
                 end_rng_dir.next().unwrap(),
@@ -247,32 +229,42 @@ fn generate_sequence() -> Vec<(Vec3A, Vec3A, Vec3A, Vec3A, Rotator)> {
                 roll: rot_rng.next().unwrap(),
             };
 
-            (start_pos, target_pos, vel, ang_vel, start_rot)
+            let eta = eta_rng.next().unwrap();
+
+            (start_pos, target_pos, vel, ang_vel, start_rot, eta)
         })
         .collect()
 }
 
 fn main() {
-    let mut arena = rocketsim::Arena::new(rocketsim::GameMode::TheVoid);
-    arena.add_car(rocketsim::Team::Blue, rocketsim::CarBodyConfig::OCTANE);
+    let mut arena = Arena::new_with_config(
+        MutatorConfig {
+            boost_used_per_second: 0.0,
+            car_spawn_boost_amount: 100.0,
+            ..MutatorConfig::new(GameMode::Soccar)
+        },
+        CarBodyConfig::OCTANE,
+    );
 
     let sequence = generate_sequence();
     let num = sequence.len();
 
-    for tps in [120, 90, 60] {
+    for tps in [120] {
         let mut num_frames = Vec::with_capacity(num);
 
         let start_time = Instant::now();
-        for (start_pos, target_pos, vel, ang_vel, start_rot) in sequence.iter().copied().progress()
+        for (start_pos, target_pos, vel, ang_vel, start_rot, eta) in
+            sequence.iter().copied().progress()
         {
             let start_orientation = start_rot.into_mat3a();
-            let frames_elapsed = aerial::simulate_aerial_rsim(
+            let frames_elapsed = aerial::simulate_aerial(
                 &mut arena,
                 start_pos,
                 target_pos,
                 vel,
                 ang_vel,
                 start_orientation,
+                eta,
             );
             num_frames.push(u32::from(frames_elapsed));
         }
@@ -289,8 +281,9 @@ fn main() {
 
         let speedup = sim_time_elapsed / irl_time_elapsed;
         let time_per_sim = irl_time_elapsed * 1_000_000.0 / num as f64;
+        let sim_ticks_per_irl_sec = total_frames / irl_time_elapsed;
         println!(
-            "tps={tps:.0} | Finished simulating {sim_time_elapsed:.2}s in {irl_time_elapsed:.2}s ({speedup:.0}x; {time_per_sim:.1}mus per), {mean:.4}s mean, {median:.4}s median, {max:.4}s max"
+            "tps={tps:.0} | Finished simulating {sim_time_elapsed:.2}s in {irl_time_elapsed:.2}s ({speedup:.0}x; {time_per_sim:.1}mus per, {sim_ticks_per_irl_sec:.0}tps), {mean:.4}s mean, {median:.4}s median, {max:.4}s max"
         );
     }
 }

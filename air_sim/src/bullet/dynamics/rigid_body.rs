@@ -2,94 +2,40 @@ use glam::{Affine3A, Mat3A, Vec3A};
 
 use crate::bullet::linear_math::transform_util::integrate_trans;
 
-pub enum RigidBodyFlags {
-    DisableWorldGravity = 1,
-}
-
-pub struct RigidBodyConstructionInfo {
-    pub mass: f32,
-    pub start_world_trans: Affine3A,
-    pub local_inertia: Vec3A,
-    pub linear_damping: f32,
-    pub angular_damping: f32,
-    pub friction: f32,
-    pub restitution: f32,
-}
-
-impl RigidBodyConstructionInfo {
-    pub const fn new(mass: f32) -> Self {
-        Self {
-            mass,
-            local_inertia: Vec3A::ZERO,
-            linear_damping: 0.0,
-            angular_damping: 0.0,
-            friction: 0.5,
-            restitution: 0.0,
-            start_world_trans: Affine3A::IDENTITY,
-        }
-    }
-}
-
 pub struct RigidBody {
     world_trans: Affine3A,
-    rb_flags: u8,
-
-    pub interp_world_trans: Affine3A,
-    pub companion_id: Option<usize>,
-    /// The index of this object in `CollisionWorld`
-    pub world_array_idx: usize,
-
     pub inv_inertia_tensor_world: Mat3A,
     pub lin_vel: Vec3A,
     pub ang_vel: Vec3A,
     pub inverse_mass: f32,
     pub gravity: Vec3A,
-    pub gravity_acceleration: Vec3A,
     pub inv_inertia_local: Vec3A,
     pub total_force: Vec3A,
     pub total_torque: Vec3A,
-    pub linear_damping: f32,
-    pub angular_damping: f32,
 }
 
 impl RigidBody {
-    pub fn new(info: RigidBodyConstructionInfo) -> Self {
-        let inverse_mass = if info.mass == 0.0 {
-            0.0
-        } else {
-            1.0 / info.mass
-        };
-
-        let linear_damping = info.linear_damping.clamp(0.0, 1.0);
-        let angular_damping = info.angular_damping.clamp(0.0, 1.0);
+    pub fn new(mass: f32, local_inertia: Vec3A) -> Self {
+        let inverse_mass = 1.0 / mass;
 
         let inv_inertia_local = Vec3A::select(
-            info.local_inertia.cmpeq(Vec3A::ZERO),
+            local_inertia.cmpeq(Vec3A::ZERO),
             Vec3A::ZERO,
-            1.0 / info.local_inertia,
+            1.0 / local_inertia,
         );
 
-        let inv_inertia_tensor_world =
-            Self::get_inertia_tensor(info.start_world_trans.matrix3, inv_inertia_local);
+        let inv_inertia_tensor_world = Self::get_inertia_tensor(Mat3A::IDENTITY, inv_inertia_local);
 
         Self {
-            world_trans: info.start_world_trans,
-            interp_world_trans: info.start_world_trans,
-            companion_id: None,
-            world_array_idx: 0,
-
+            world_trans: Affine3A::IDENTITY,
             inv_inertia_tensor_world,
             lin_vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
             inverse_mass,
             gravity: Vec3A::ZERO,
-            gravity_acceleration: Vec3A::ZERO,
             inv_inertia_local,
             total_force: Vec3A::ZERO,
             total_torque: Vec3A::ZERO,
-            linear_damping,
-            angular_damping,
-            rb_flags: 0,
         }
     }
 
@@ -101,16 +47,8 @@ impl RigidBody {
         &self.world_trans
     }
 
-    pub const fn get_rb_flags(&self) -> u8 {
-        self.rb_flags
-    }
-
     pub fn set_gravity(&mut self, acceleration: Vec3A) {
-        if self.inverse_mass != 0.0 {
-            self.gravity = acceleration * (1.0 / self.inverse_mass);
-        }
-
-        self.gravity_acceleration = acceleration;
+        self.gravity = acceleration * (1.0 / self.inverse_mass);
     }
 
     pub fn set_lin_vel(&mut self, lin_vel: Vec3A) {
@@ -156,21 +94,13 @@ impl RigidBody {
         self.apply_central_force(self.gravity);
     }
 
-    pub fn apply_damping(&mut self, time_step: f32) {
-        self.lin_vel *= (1.0 - self.linear_damping).powf(time_step);
-        self.ang_vel *= (1.0 - self.angular_damping).powf(time_step);
-    }
-
-    pub fn predict_integration_trans(&self, time_step: f32) -> Affine3A {
-        let mut trans = *self.get_world_trans();
-        integrate_trans(&mut trans, self.lin_vel, self.ang_vel, time_step);
-        trans
+    pub fn integration_trans(&mut self, time_step: f32) {
+        integrate_trans(&mut self.world_trans, self.lin_vel, self.ang_vel, time_step);
+        self.update_inertia_tensor();
     }
 
     pub fn set_center_of_mass_trans(&mut self, xform: Affine3A) {
-        self.interp_world_trans = xform;
-        self.set_world_trans(xform);
-
+        self.world_trans = xform;
         self.update_inertia_tensor();
     }
 
@@ -179,11 +109,7 @@ impl RigidBody {
         self.total_torque = Vec3A::ZERO;
     }
 
-    pub const fn get_forward_vector(&self) -> Vec3A {
-        self.get_world_trans().matrix3.x_axis
-    }
-
     pub fn get_forward_speed(&self) -> f32 {
-        self.lin_vel.dot(self.get_forward_vector())
+        self.lin_vel.dot(self.get_world_trans().matrix3.x_axis)
     }
 }

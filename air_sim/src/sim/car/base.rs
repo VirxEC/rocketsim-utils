@@ -1,69 +1,36 @@
-use std::ops::{Deref, DerefMut};
-
 use glam::{Affine3A, Vec3A};
 
-// Shorthand using aliases for constants
 use crate::{
     CarBodyConfig, CarControls, CarState, MutatorConfig,
     bullet::{
-        collision::box_shape::BoxShape,
-        dynamics::{
-            discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::{RigidBody, RigidBodyConstructionInfo},
-        },
+        collision::box_shape::calculate_local_intertia, dynamics::rigid_body::RigidBody,
         linear_math::Mat3AExt,
     },
     consts::{BT_TO_UU, TICK_TIME, UU_TO_BT, car as car_consts},
-    sim::car::car_info::CarInfo,
 };
 
 pub struct Car {
-    pub(crate) info: CarInfo,
-    pub(crate) rigid_body_idx: usize,
+    pub(crate) config: CarBodyConfig,
     pub(crate) vel_impulse_cache: Vec3A,
     pub(crate) state: CarState,
 }
 
-impl Deref for Car {
-    type Target = CarInfo;
-    fn deref(&self) -> &Self::Target {
-        &self.info
-    }
-}
-impl DerefMut for Car {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.info
-    }
-}
-
 impl Car {
-    pub(crate) fn new(
-        idx: usize,
-        bullet_world: &mut DiscreteDynamicsWorld,
-        mutator_config: &MutatorConfig,
-        config: CarBodyConfig,
-    ) -> Self {
-        let child_hitbox_shape = BoxShape::new(config.hitbox_size * UU_TO_BT * 0.5);
-        let local_inertia = child_hitbox_shape.calculate_local_intertia(car_consts::MASS_BT);
+    pub(crate) fn new(mutator_config: &MutatorConfig, config: CarBodyConfig) -> (Self, RigidBody) {
+        let local_inertia =
+            calculate_local_intertia(config.hitbox_size * UU_TO_BT * 0.5, mutator_config.car_mass);
+        let body = RigidBody::new(mutator_config.car_mass, local_inertia);
 
-        let mut rb_info = RigidBodyConstructionInfo::new(car_consts::MASS_BT);
-        rb_info.friction = car_consts::BASE_COEFS.friction;
-        rb_info.restitution = car_consts::BASE_COEFS.restitution;
-        rb_info.start_world_trans = Affine3A::IDENTITY;
-        rb_info.local_inertia = local_inertia;
-
-        let body = RigidBody::new(rb_info);
-        let rigid_body_idx = bullet_world.add_rigid_body(body);
-
-        Self {
-            info: CarInfo { idx, config },
-            rigid_body_idx,
+        let car = Self {
+            config,
             vel_impulse_cache: Vec3A::ZERO,
             state: CarState {
                 boost: mutator_config.car_spawn_boost_amount,
                 ..Default::default()
             },
-        }
+        };
+
+        (car, body)
     }
 
     pub const fn get_state(&self) -> &CarState {
@@ -71,7 +38,7 @@ impl Car {
     }
 
     pub const fn get_config(&self) -> &CarBodyConfig {
-        &self.info.config
+        &self.config
     }
 
     pub const fn set_controls(&mut self, new_controls: CarControls) {
@@ -79,16 +46,13 @@ impl Car {
     }
 
     pub(crate) fn set_state(&mut self, rb: &mut RigidBody, state: &CarState) {
-        debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
-
-        rb.set_world_trans(Affine3A {
+        rb.set_center_of_mass_trans(Affine3A {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
 
         rb.lin_vel = state.phys.vel * UU_TO_BT;
         rb.ang_vel = state.phys.ang_vel;
-        rb.update_inertia_tensor();
 
         self.vel_impulse_cache = Vec3A::ZERO;
         self.state = *state;
@@ -337,13 +301,7 @@ impl Car {
         self.state.boost = self.state.boost.clamp(0.0, car_consts::boost::MAX);
     }
 
-    pub(crate) fn pre_tick_update(
-        &mut self,
-        collision_world: &mut DiscreteDynamicsWorld,
-        mutator_config: &MutatorConfig,
-    ) {
-        let rb = &mut collision_world.bodies_mut()[self.rigid_body_idx];
-
+    pub(crate) fn pre_tick_update(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig) {
         self.state.controls = self.state.controls.clamp();
         let forward_speed_uu = rb.get_forward_speed() * BT_TO_UU;
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
@@ -354,8 +312,6 @@ impl Car {
     }
 
     pub(crate) fn post_tick_update(&mut self, rb: &RigidBody) {
-        debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
-
         self.state.phys.rot_mat = rb.get_world_trans().matrix3;
 
         let speed_squared = (rb.lin_vel * BT_TO_UU).length_squared();
@@ -382,7 +338,6 @@ impl Car {
 
     pub(crate) fn finish_physics_tick(&mut self, rb: &mut RigidBody) {
         const MAX_SPEED: f32 = car_consts::MAX_SPEED * UU_TO_BT;
-        debug_assert_eq!(rb.world_array_idx, self.rigid_body_idx);
 
         if self.vel_impulse_cache != Vec3A::ZERO {
             rb.lin_vel += self.vel_impulse_cache * UU_TO_BT;

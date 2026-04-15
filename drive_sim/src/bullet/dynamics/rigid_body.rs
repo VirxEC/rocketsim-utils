@@ -157,13 +157,8 @@ impl RigidBody {
     }
 
     #[inline]
-    pub const fn get_forward_vector(&self) -> Vec3A {
-        self.get_world_trans().matrix3.x_axis
-    }
-
-    #[inline]
     pub fn get_forward_speed(&self) -> f32 {
-        self.lin_vel.dot(self.get_forward_vector())
+        self.lin_vel.dot(self.get_world_trans().matrix3.x_axis)
     }
 
     #[inline]
