@@ -147,7 +147,8 @@ impl Car {
             self.body.apply_central_force(
                 forward_dir
                     * self.state.controls.throttle
-                    * const { car_consts::drive::THROTTLE_AIR_ACCEL * UU_TO_BT * car_consts::MASS_BT },
+                    * car_consts::drive::THROTTLE_AIR_ACCEL
+                    * UU_TO_BT,
             );
         }
     }
@@ -280,9 +281,7 @@ impl Car {
             self.state.boost -= mutator_config.boost_used_per_second * self.tick_time;
 
             self.body.apply_central_force(
-                mutator_config.boost_accel_air
-                    * self.state.get_forward_dir()
-                    * (UU_TO_BT * car_consts::MASS_BT),
+                mutator_config.boost_accel_air * self.state.get_forward_dir() * UU_TO_BT,
             );
         } else {
             self.state.boosting_time = 0.0;

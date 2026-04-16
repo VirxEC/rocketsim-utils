@@ -34,7 +34,7 @@ impl RigidBody {
             lin_vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
             inverse_mass,
-            gravity: gravity * mass,
+            gravity,
             inv_inertia_local,
             total_force: Vec3A::ZERO,
             total_torque: Vec3A::ZERO,
@@ -82,6 +82,7 @@ impl RigidBody {
     }
 
     pub fn set_center_of_mass_trans(&mut self, xform: Affine3A) {
+        self.world_rotation = Quat::from_mat3a(&xform.matrix3);
         self.world_trans = xform;
         self.update_inertia_tensor();
     }
@@ -98,7 +99,7 @@ impl RigidBody {
     pub fn step_simulation(&mut self, time_step: f32) {
         self.apply_gravity();
 
-        self.lin_vel += self.total_force * self.inverse_mass * time_step;
+        self.lin_vel += self.total_force * time_step;
         self.ang_vel += self.inv_inertia_tensor_world * self.total_torque * time_step;
 
         self.integration_trans(time_step);

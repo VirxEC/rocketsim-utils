@@ -24,7 +24,7 @@ impl Arena {
             &mutator_config,
             mutator_config.gravity * UU_TO_BT,
             car_body,
-            f32::from(tick_rate),
+            1.0 / f32::from(tick_rate),
         );
 
         Self {

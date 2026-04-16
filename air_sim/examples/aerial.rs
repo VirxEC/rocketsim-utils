@@ -105,7 +105,7 @@ mod aerial {
         Arena, CarControls, CarState,
         consts::{GRAVITY_Z, car},
     };
-    use glam::{Quat, Vec3A};
+    use glam::Vec3A;
 
     use crate::Rotator;
 
@@ -147,7 +147,7 @@ mod aerial {
 
             let mut ctrls = CarControls::DEFAULT;
             crate::reorient::reorient_fwd(
-                Quat::from_mat3a(&car.rot_mat),
+                car.rot_quat,
                 car.ang_vel,
                 target_dir,
                 dt,
@@ -267,12 +267,15 @@ fn main() {
         let tps = f64::from(tps);
         let total_frames = f64::from(num_frames.iter().sum::<u32>());
         let sim_time_elapsed = total_frames / tps;
+        let mean = total_frames / num as f64 / tps;
+        let median = num_frames[num / 2] as f64 / tps;
+        let max = num_frames[num - 1] as f64 / tps;
 
         let speedup = sim_time_elapsed / irl_time_elapsed;
         let time_per_sim = irl_time_elapsed * 1_000_000.0 / num as f64;
         let sim_ticks_per_irl_sec = total_frames / irl_time_elapsed;
         println!(
-            "tps={tps:.0} | Finished simulating {sim_time_elapsed:.2}s in {irl_time_elapsed:.2}s ({speedup:.0}x; {time_per_sim:.1}mus per, {sim_ticks_per_irl_sec:.0}tps)"
+            "tps={tps:.0} | Finished simulating {sim_time_elapsed:.2}s in {irl_time_elapsed:.2}s ({speedup:.0}x; {time_per_sim:.1}mus per, {sim_ticks_per_irl_sec:.0}tps), {mean:.4}s mean, {median:.4}s median, {max:.4}s max"
         );
     }
 }
