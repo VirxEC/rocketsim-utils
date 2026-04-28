@@ -12,11 +12,11 @@ glam = "0.32.1"
 [workspace.lints.clippy]
 all = "warn"
 # nursery = "warn"
-pedantic = "warn"
-suboptimal_flops = { level = "allow", priority = 1 }
-cast_possible_truncation = { level = "allow", priority = 1 }
-cast_precision_loss = { level = "allow", priority = 1 }
-cast_sign_loss = { level = "allow", priority = 1 }
+# pedantic = "warn"
+# suboptimal_flops = { level = "allow", priority = 1 }
+# cast_possible_truncation = { level = "allow", priority = 1 }
+# cast_precision_loss = { level = "allow", priority = 1 }
+# cast_sign_loss = { level = "allow", priority = 1 }
 
 [profile.dev]
 opt-level = 2
