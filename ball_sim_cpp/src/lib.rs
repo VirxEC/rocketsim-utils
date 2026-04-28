@@ -54,7 +54,6 @@ fn from_ds_info(info: SimDropshotInfo) -> ffi::DropshotInfo {
 
 fn to_game_mode(game_mode: ffi::GameMode) -> SimGameMode {
     match game_mode {
-        ffi::GameMode::Soccar => SimGameMode::Soccar,
         ffi::GameMode::Hoops => SimGameMode::Hoops,
         ffi::GameMode::Heatseeker => SimGameMode::Heatseeker,
         ffi::GameMode::Snowday => SimGameMode::Snowday,
@@ -138,14 +137,17 @@ pub struct Arena {
     inner: SimArena,
 }
 
+#[must_use]
 pub fn init_from_default(silent: bool) -> bool {
     ball_sim::init_from_default(silent).is_ok()
 }
 
+#[must_use]
 pub fn init_from_path(path: &str, silent: bool) -> bool {
     ball_sim::init(path, silent).is_ok()
 }
 
+#[must_use]
 pub fn init_from_mem(mesh_files: Vec<ffi::MeshFile>, silent: bool) -> bool {
     let mut mesh_map: AHashMap<SimGameMode, Vec<Vec<u8>>> = AHashMap::new();
     for mesh in mesh_files {
@@ -157,10 +159,12 @@ pub fn init_from_mem(mesh_files: Vec<ffi::MeshFile>, silent: bool) -> bool {
     ball_sim::init_from_mem(mesh_map, silent).is_ok()
 }
 
+#[must_use]
 pub fn is_initialized() -> bool {
     ball_sim::is_initialized()
 }
 
+#[must_use]
 pub fn ball_state_default() -> ffi::BallState {
     let state = SimBallState::DEFAULT;
     ffi::BallState {
@@ -175,6 +179,7 @@ pub fn ball_state_default() -> ffi::BallState {
     }
 }
 
+#[must_use]
 pub fn arena_new(game_mode: ffi::GameMode) -> Box<Arena> {
     let gm = to_game_mode(game_mode);
 
@@ -201,6 +206,7 @@ impl Arena {
         self.inner.set_ball_state(sim_state);
     }
 
+    #[must_use]
     pub fn get_ball_state(&self) -> ffi::BallState {
         let state = self.inner.get_ball_state();
         ffi::BallState {

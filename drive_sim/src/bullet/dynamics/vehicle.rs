@@ -24,9 +24,9 @@ fn vec_to_simd(vecs: [Vec3A; 4]) -> [Vec4; 3] {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RaycastInfo {
-    pub hard_point_ws: [Vec4; 3],
-    contact_point_ws: [Vec4; 3],
-    wheel_direction_ws: Vec3A,
+    pub hard_point: [Vec4; 3],
+    contact_point: [Vec4; 3],
+    wheel_direction: Vec3A,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -51,9 +51,9 @@ impl VehicleRL {
         const ROLLING_FRICTION_SCALE: f32 = 113.73963;
 
         let chassis_pos = chassis.get_world_trans().translation;
-        let rel_x = self.raycast_info.contact_point_ws[0] - chassis_pos.x;
-        let rel_y = self.raycast_info.contact_point_ws[1] - chassis_pos.y;
-        let rel_z = self.raycast_info.contact_point_ws[2] - chassis_pos.z;
+        let rel_x = self.raycast_info.contact_point[0] - chassis_pos.x;
+        let rel_y = self.raycast_info.contact_point[1] - chassis_pos.y;
+        let rel_z = self.raycast_info.contact_point[2] - chassis_pos.z;
 
         let avx = Vec4::splat(chassis.ang_vel.x);
         let avy = Vec4::splat(chassis.ang_vel.y);
@@ -95,9 +95,9 @@ impl VehicleRL {
 
     fn apply_friction_impulses(&self, cb: &mut RigidBody, time_step: f32) {
         let trans = cb.get_world_trans();
-        let rel_x = self.raycast_info.contact_point_ws[0] - trans.translation.x;
-        let rel_y = self.raycast_info.contact_point_ws[1] - trans.translation.y;
-        let rel_z = self.raycast_info.contact_point_ws[2] - trans.translation.z;
+        let rel_x = self.raycast_info.contact_point[0] - trans.translation.x;
+        let rel_y = self.raycast_info.contact_point[1] - trans.translation.y;
+        let rel_z = self.raycast_info.contact_point[2] - trans.translation.z;
 
         let up_x = Vec4::splat(trans.matrix3.z_axis.x);
         let up_y = Vec4::splat(trans.matrix3.z_axis.y);
@@ -129,19 +129,19 @@ impl VehicleRL {
             + self.wheel_radius
             + (SUSPENSION_TRAVEL - bullet_vehicle::SUSPENSION_SUBTRACTION);
 
-        let target_x = self.raycast_info.hard_point_ws[0]
-            + self.raycast_info.wheel_direction_ws.x * ray_length;
-        let target_y = self.raycast_info.hard_point_ws[1]
-            + self.raycast_info.wheel_direction_ws.y * ray_length;
-        let target_z = self.raycast_info.hard_point_ws[2]
-            + self.raycast_info.wheel_direction_ws.z * ray_length;
+        let target_x =
+            self.raycast_info.hard_point[0] + self.raycast_info.wheel_direction.x * ray_length;
+        let target_y =
+            self.raycast_info.hard_point[1] + self.raycast_info.wheel_direction.y * ray_length;
+        let target_z =
+            self.raycast_info.hard_point[2] + self.raycast_info.wheel_direction.z * ray_length;
 
         [target_x, target_y, target_z]
     }
 
     fn apply_ray_casts(&mut self, chassis: &RigidBody) {
-        let hard_z = self.raycast_info.hard_point_ws[2];
-        let contact_z = self.raycast_info.contact_point_ws[2];
+        let hard_z = self.raycast_info.hard_point[2];
+        let contact_z = self.raycast_info.contact_point[2];
 
         let suspension_length = (hard_z - contact_z) - self.wheel_radius;
 
@@ -150,8 +150,8 @@ impl VehicleRL {
         self.suspension_length = suspension_length.clamp(min_suspension_len, max_suspension_len);
 
         let chassis_pos = chassis.get_world_trans().translation;
-        let rel_x = self.raycast_info.contact_point_ws[0] - chassis_pos.x;
-        let rel_y = self.raycast_info.contact_point_ws[1] - chassis_pos.y;
+        let rel_x = self.raycast_info.contact_point[0] - chassis_pos.x;
+        let rel_y = self.raycast_info.contact_point[1] - chassis_pos.y;
 
         let cross_z = chassis.ang_vel.x * rel_y - chassis.ang_vel.y * rel_x;
         self.suspension_relative_vel = cross_z + chassis.lin_vel.z;
@@ -176,8 +176,8 @@ impl VehicleRL {
             + self.chassis_connection_point_cs[2] * basis_z.z
             + chassis_trans.translation.z;
 
-        self.raycast_info.hard_point_ws = [hard_x, hard_y, hard_z];
-        self.raycast_info.wheel_direction_ws = -basis_z;
+        self.raycast_info.hard_point = [hard_x, hard_y, hard_z];
+        self.raycast_info.wheel_direction = -basis_z;
 
         let axle_dirs = [
             self.steering_orn[0] * chassis_trans.matrix3.y_axis,
@@ -193,8 +193,8 @@ impl VehicleRL {
 
         let targets = self.get_raycast_targets();
         let ray_results =
-            StaticPlaneShape::perform_raycast(&self.raycast_info.hard_point_ws, &targets);
-        self.raycast_info.contact_point_ws = ray_results;
+            StaticPlaneShape::perform_raycast(&self.raycast_info.hard_point, &targets);
+        self.raycast_info.contact_point = ray_results;
 
         self.apply_ray_casts(chassis);
 
@@ -225,8 +225,8 @@ impl VehicleRL {
         let suspension_force = suspension_force.max(Vec4::ZERO) * delta_time;
 
         let trans = cb.get_world_trans();
-        let rel_x = self.raycast_info.contact_point_ws[0] - trans.translation.x;
-        let rel_y = self.raycast_info.contact_point_ws[1] - trans.translation.y;
+        let rel_x = self.raycast_info.contact_point[0] - trans.translation.x;
+        let rel_y = self.raycast_info.contact_point[1] - trans.translation.y;
 
         let total_force =
             suspension_force.x + suspension_force.y + suspension_force.z + suspension_force.w;

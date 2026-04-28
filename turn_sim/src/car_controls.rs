@@ -18,6 +18,7 @@ impl CarControls {
         roll: 0.0,
     };
 
+    #[must_use]
     pub const fn clamp(mut self) -> Self {
         self.pitch = self.pitch.clamp(-1.0, 1.0);
         self.yaw = self.yaw.clamp(-1.0, 1.0);
@@ -25,16 +26,19 @@ impl CarControls {
         self
     }
 
+    #[must_use]
     pub const fn with_pitch(mut self, pitch: f32) -> Self {
         self.pitch = pitch;
         self
     }
 
+    #[must_use]
     pub const fn with_yaw(mut self, yaw: f32) -> Self {
         self.yaw = yaw;
         self
     }
 
+    #[must_use]
     pub const fn with_roll(mut self, roll: f32) -> Self {
         self.roll = roll;
         self

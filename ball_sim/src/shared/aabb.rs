@@ -15,31 +15,32 @@ impl Aabb {
     };
 
     #[inline]
+    #[must_use]
     pub const fn new(min: Vec3A, max: Vec3A) -> Self {
         Self { min, max }
     }
 
     #[inline]
+    #[must_use]
     pub fn center(&self) -> Vec3A {
         (self.min + self.max) * 0.5
     }
 
+    #[must_use]
     pub fn area(&self) -> f32 {
         let extents = self.max - self.min;
         2.0 * (extents.x * extents.y + extents.x * extents.z + extents.y * extents.z)
     }
 
     #[inline]
+    #[must_use]
     pub fn intersects(&self, rhs: &Self) -> bool {
         self.min.cmple(rhs.max).all() && self.max.cmpge(rhs.min).all()
     }
 
-    pub fn combine(&self, rhs: &Self) -> Self {
-        Self::new(self.min.min(rhs.min), self.max.max(rhs.max))
-    }
-
     /// Finds the point inside the AABB nearest to the given point
     #[inline]
+    #[must_use]
     pub fn clamp(&self, point: Vec3A) -> Vec3A {
         point.clamp(self.min, self.max)
     }

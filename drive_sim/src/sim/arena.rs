@@ -17,6 +17,7 @@ pub struct Arena {
 }
 
 impl Arena {
+    #[must_use]
     pub fn new(game_mode: GameMode, tps: u8) -> Self {
         assert!(
             (30..=120).contains(&tps),
@@ -30,7 +31,9 @@ impl Arena {
             collision_obj: car_body,
         };
 
-        let boost_pad_grid = if game_mode != GameMode::Dropshot {
+        let boost_pad_grid = if game_mode == GameMode::Dropshot {
+            None
+        } else {
             let mut boost_pad_configs = Vec::new();
 
             let small_pad_locs = consts::boost_pads::get_locations(game_mode, false);
@@ -52,8 +55,6 @@ impl Arena {
             }
 
             Some(BoostPadGrid::new(&boost_pad_configs, &mutator_config))
-        } else {
-            None
         };
 
         let tps = f32::from(tps);
@@ -92,29 +93,35 @@ impl Arena {
     }
 
     #[inline]
+    #[must_use]
     pub const fn tick_count(&self) -> u64 {
         self.tick_count
     }
 
     #[inline]
+    #[must_use]
     pub const fn game_mode(&self) -> GameMode {
         self.game_mode
     }
 
     #[inline]
+    #[must_use]
     pub const fn mutator_config(&self) -> &MutatorConfig {
         &self.mutator_config
     }
 
     #[inline]
+    #[must_use]
     pub const fn car(&self) -> &Car {
         &self.car
     }
 
+    #[must_use]
     pub const fn get_car_state(&self) -> &CarState {
         self.car.get_state()
     }
 
+    #[must_use]
     pub const fn get_car_controls(&self) -> &CarControls {
         &self.car.state.controls
     }
@@ -128,6 +135,7 @@ impl Arena {
         self.car.state.controls = controls;
     }
 
+    #[must_use]
     pub fn get_boost_pad_state(&self, idx: usize) -> BoostPadState {
         let pad = self.boost_pads()[idx];
         let cooldown = pad.gave_boost_tick_count.map_or(0.0, |gave_boost_tick| {
@@ -152,6 +160,7 @@ impl Arena {
         }
     }
 
+    #[must_use]
     pub fn get_boost_pad_config(&self, idx: usize) -> &BoostPadConfig {
         self.boost_pads()[idx].config()
     }
@@ -160,6 +169,7 @@ impl Arena {
         &self.boost_pad_grid.as_ref().unwrap().all_pads
     }
 
+    #[must_use]
     pub fn num_boost_pads(&self) -> usize {
         self.boost_pads().len()
     }

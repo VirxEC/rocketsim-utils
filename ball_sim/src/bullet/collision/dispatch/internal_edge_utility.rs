@@ -5,7 +5,7 @@ use glam::{Quat, Vec3, Vec3A};
 use crate::{
     bullet::{
         collision::{
-            dispatch::tri_bvh_util::*,
+            dispatch::tri_bvh_util::NodeOverlapCallback,
             narrowphase::manifold_point::ManifoldPoint,
             shapes::{
                 collision_shape::CollisionShapes,

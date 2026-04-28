@@ -97,13 +97,10 @@ fn main() {
         "Finished simulating {sim_time_elapsed:.2}s in {irl_time_elapsed:.2}s ({speedup:.0}x; {time_per_sim:.1}mus per, {ticks_per_second:.0})tps"
     );
 
-    let mut arena_rs = rs::Arena::new_with_config(
-        rs::GameMode::Soccar,
-        rs::ArenaConfig {
-            no_ball_rot: true,
-            ..Default::default()
-        },
-    );
+    let mut arena_rs = rs::Arena::new_with_config(rs::ArenaConfig {
+        no_ball_rot: true,
+        ..Default::default()
+    });
 
     let start_time = Instant::now();
     for ((pos, vel, ang_vel), final_state) in sequence.iter().copied().zip(&states).progress() {

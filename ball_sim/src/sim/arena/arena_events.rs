@@ -29,6 +29,7 @@ impl ArenaEventList {
     }
 
     #[inline]
+    #[must_use]
     pub fn events(&self) -> &[BallHitWorldEvent] {
         &self.events
     }

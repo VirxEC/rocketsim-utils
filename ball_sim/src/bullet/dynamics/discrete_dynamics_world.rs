@@ -7,12 +7,7 @@ use super::{
 use crate::{
     ArenaContactTracker,
     bullet::{
-        collision::{
-            broadphase::GridBroadphase,
-            dispatch::{
-                collision_dispatcher::CollisionDispatcher, collision_world::CollisionWorld,
-            },
-        },
+        collision::{broadphase::GridBroadphase, dispatch::collision_world::CollisionWorld},
         dynamics::sphere_rigid_body::SphereRigidBody,
     },
 };
@@ -24,15 +19,10 @@ pub struct DiscreteDynamicsWorld {
 }
 
 impl DiscreteDynamicsWorld {
-    pub fn new(
-        dispatcher: CollisionDispatcher,
-        pair_cache: GridBroadphase,
-        constraint_solver: SeqImpulseConstraintSolver,
-        ball_obj: SphereRigidBody,
-    ) -> Self {
+    pub fn new(pair_cache: GridBroadphase, ball_obj: SphereRigidBody) -> Self {
         Self {
-            collision_world: CollisionWorld::new(dispatcher, pair_cache, ball_obj),
-            solver: constraint_solver,
+            collision_world: CollisionWorld::new(pair_cache, ball_obj),
+            solver: SeqImpulseConstraintSolver::default(),
         }
     }
 

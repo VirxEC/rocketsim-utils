@@ -81,6 +81,7 @@ impl CarState {
         boosting_time: 0.0,
     };
 
+    #[must_use]
     pub const fn has_flip_or_jump(&self) -> bool {
         !self.has_flipped
             && !self.has_double_jumped

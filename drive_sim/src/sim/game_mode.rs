@@ -11,6 +11,7 @@ pub enum GameMode {
 impl GameMode {
     const NAMES: [&'static str; 5] = ["soccar", "hoops", "heatseeker", "snowday", "dropshot"];
 
+    #[must_use]
     pub const fn name(self) -> &'static str {
         Self::NAMES[self as usize]
     }

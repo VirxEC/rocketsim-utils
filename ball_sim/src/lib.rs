@@ -1,5 +1,3 @@
-#![allow(clippy::suboptimal_flops)]
-
 mod base;
 mod bullet;
 mod logging;

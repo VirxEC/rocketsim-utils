@@ -89,7 +89,6 @@ impl SphereRigidBody {
     }
 
     pub fn set_gravity(&mut self, acceleration: Vec3A) {
-        debug_assert_ne!(self.inverse_mass, 0.0);
         self.gravity = acceleration * (1.0 / self.inverse_mass);
     }
 

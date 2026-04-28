@@ -23,11 +23,7 @@ pub struct CollisionWorld {
 impl CollisionWorld {
     const CBT: Vec3A = Vec3A::splat(CONTACT_BREAKING_THRESHOLD);
 
-    pub fn new(
-        dispatcher: CollisionDispatcher,
-        mut pair_cache: GridBroadphase,
-        ball_obj: SphereRigidBody,
-    ) -> Self {
+    pub fn new(mut pair_cache: GridBroadphase, ball_obj: SphereRigidBody) -> Self {
         let aabb = ball_obj
             .get_collision_shape()
             .get_aabb(ball_obj.get_world_trans());
@@ -37,7 +33,7 @@ impl CollisionWorld {
         Self {
             ball_obj,
             collision_objs: Vec::new(),
-            dispatcher1: dispatcher,
+            dispatcher1: CollisionDispatcher::default(),
             broadphase_pair_cache: pair_cache,
         }
     }

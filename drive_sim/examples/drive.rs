@@ -274,8 +274,8 @@ fn main() {
         let total_frames = f64::from(num_frames.iter().sum::<u32>());
         let sim_time_elapsed = total_frames / ftps;
         let mean = total_frames / num as f64 / ftps;
-        let median = num_frames[num / 2] as f64 / ftps;
-        let max = num_frames[num - 1] as f64 / ftps;
+        let median = f64::from(num_frames[num / 2]) / ftps;
+        let max = f64::from(num_frames[num - 1]) / ftps;
 
         let speedup = sim_time_elapsed / irl_time_elapsed;
         let time_per_sim = irl_time_elapsed * 1_000_000.0 / num as f64;

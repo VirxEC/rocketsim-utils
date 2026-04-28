@@ -35,6 +35,7 @@ impl Car {
         }
     }
 
+    #[must_use]
     pub const fn get_state(&self) -> &CarState {
         &self.state
     }

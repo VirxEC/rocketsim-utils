@@ -45,10 +45,14 @@ impl SolverBody {
     }
 
     pub fn solve_group_split_impulse_iterations(&mut self, contact: &mut SolverConstraint) {
+        if contact.rhs_penetration == 0.0 {
+            return;
+        }
+
         for _ in 0..contact_solver_info::NUM_ITERATIONS {
             let residual = contact.resolve_split_penetration_impulse(self);
             if residual * residual == 0.0 {
-                continue;
+                break;
             }
         }
     }

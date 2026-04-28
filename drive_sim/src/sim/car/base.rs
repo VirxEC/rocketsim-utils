@@ -156,7 +156,7 @@ impl Car {
         let car_ang_vel = rb.ang_vel;
 
         let [hard_point_x, hard_point_y, hard_point_z] =
-            self.bullet_vehicle.raycast_info.hard_point_ws;
+            self.bullet_vehicle.raycast_info.hard_point;
         let [lat_dir_x, lat_dir_y, lat_dir_z] = self.bullet_vehicle.axle_dir;
 
         let wheel_delta_x = hard_point_x - car_pos.x;

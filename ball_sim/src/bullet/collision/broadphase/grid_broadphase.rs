@@ -1,3 +1,5 @@
+use std::iter::repeat_with;
+
 use arrayvec::ArrayVec;
 use glam::{IVec3, USizeVec3, Vec3A};
 
@@ -73,23 +75,17 @@ impl CellGrid {
         col_obj: &RigidBody,
         proxy_idx: usize,
     ) {
-        // TODO: "Fix dumb massive value aabb bug"
-        let aabb_max = proxy.aabb.max.min(self.max_pos);
-
-        let min = self.get_cell_indices(proxy.aabb.min);
-        let max = self.get_cell_indices(aabb_max);
+        let min = self.get_cell_indices(proxy.aabb.min.max(self.min_pos));
+        let max = self.get_cell_indices(proxy.aabb.max.min(self.max_pos));
 
         let tri_mesh_shape = match col_obj.get_collision_shape() {
             CollisionShapes::TriangleMesh(mesh) => Some(mesh.as_ref()),
-            _ => None,
+            CollisionShapes::StaticPlane(_) => None,
         };
-
-        let mut cells = ArrayVec::<usize, 27>::new();
 
         for i in min.x..=max.x {
             for j in min.y..=max.y {
                 for k in min.z..=max.z {
-                    debug_assert!(cells.is_empty());
                     if let Some(mesh_interface) = tri_mesh_shape {
                         let cell_min = self.get_cell_min_pos(USizeVec3::new(i, j, k));
                         let cell_aabb =
@@ -114,23 +110,15 @@ impl CellGrid {
                                     continue;
                                 }
 
-                                cells.push(self.cell_indices_to_idx(cell));
+                                let i = self.cell_indices_to_idx(cell);
+                                if self.cells[i].static_handles.contains(&proxy_idx) {
+                                    continue;
+                                }
+
+                                self.cells[i].static_handles.push(proxy_idx);
                             }
                         }
                     }
-
-                    'outer: for &i in &cells {
-                        for &static_handle in &self.cells[i].static_handles {
-                            if static_handle == proxy_idx {
-                                // handle already exists
-                                continue 'outer;
-                            }
-                        }
-
-                        self.cells[i].static_handles.push(proxy_idx);
-                    }
-
-                    cells.clear();
                 }
             }
         }
@@ -145,12 +133,7 @@ pub struct GridBroadphase {
 }
 
 impl GridBroadphase {
-    pub fn new(
-        min_pos: Vec3A,
-        max_pos: Vec3A,
-        cell_size: f32,
-        pair_cache: HashedOverlappingPairCache,
-    ) -> Self {
+    pub fn new(min_pos: Vec3A, max_pos: Vec3A, cell_size: f32) -> Self {
         debug_assert!(min_pos.cmple(max_pos).all(), "Invalid min/max pos");
 
         let range = max_pos - min_pos;
@@ -159,7 +142,7 @@ impl GridBroadphase {
             .as_usizevec3()
             .max(USizeVec3::ONE);
         let total_cells = num_cells.element_product();
-        let cells = (0..total_cells).map(|_| GridCell::new()).collect();
+        let cells = repeat_with(GridCell::new).take(total_cells).collect();
 
         Self {
             cell_grid: CellGrid {
@@ -170,7 +153,7 @@ impl GridBroadphase {
                 cells,
             },
             handles: Vec::with_capacity(32),
-            pair_cache,
+            pair_cache: HashedOverlappingPairCache::default(),
         }
     }
 

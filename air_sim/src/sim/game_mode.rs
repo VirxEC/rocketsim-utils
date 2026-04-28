@@ -20,6 +20,7 @@ impl GameMode {
         "void",
     ];
 
+    #[must_use]
     pub const fn name(self) -> &'static str {
         Self::NAMES[self as usize]
     }

@@ -6,10 +6,12 @@ pub struct Arena {
 }
 
 impl Arena {
+    #[must_use]
     pub fn new(game_mode: GameMode) -> Self {
         Self::new_with_config(MutatorConfig::new(game_mode), CarBodyConfig::OCTANE, 120)
     }
 
+    #[must_use]
     pub fn new_with_config(
         mutator_config: MutatorConfig,
         car_body: CarBodyConfig,
@@ -28,8 +30,8 @@ impl Arena {
         );
 
         Self {
-            mutator_config,
             car,
+            mutator_config,
         }
     }
 
@@ -39,15 +41,18 @@ impl Arena {
     }
 
     #[inline]
+    #[must_use]
     pub const fn mutator_config(&self) -> &MutatorConfig {
         &self.mutator_config
     }
 
     #[inline]
+    #[must_use]
     pub const fn car(&self) -> &Car {
         &self.car
     }
 
+    #[must_use]
     pub fn get_car_state(&self) -> &CarState {
         self.car.get_state()
     }

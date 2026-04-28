@@ -100,6 +100,7 @@ pub mod boost_pads {
     pub const BOOST_AMOUNT_BIG: f32 = 100.0;
     pub const BOOST_AMOUNT_SMALL: f32 = 12.0;
 
+    #[must_use]
     pub const fn get_locations(game_mode: GameMode, is_big: bool) -> &'static [Vec3A] {
         const LOCS_SMALL_SOCCAR: [Vec3A; 28] = [
             Vec3A::new(0., -4240., 70.),

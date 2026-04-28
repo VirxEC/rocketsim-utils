@@ -3,7 +3,7 @@ use crate::{
         triangle_callback::ProcessTriangle, triangle_mesh::TriangleMesh,
         triangle_shape::TriangleShape,
     },
-    shared::{Aabb, bvh::*},
+    shared::{Aabb, bvh::ProcessNode},
 };
 
 pub struct NodeOverlapCallback<'a, T: ProcessTriangle> {

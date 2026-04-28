@@ -80,10 +80,6 @@ impl SolverConstraint {
     }
 
     pub fn resolve_split_penetration_impulse(&mut self, body_a: &mut SolverBody) -> f32 {
-        if self.rhs_penetration == 0.0 {
-            return 0.0;
-        }
-
         let mut delta_impulse = self.rhs_penetration;
 
         let delta_vel_1_dot_n = bullet_dot(self.contact_normal_1, body_a.push_vel)
