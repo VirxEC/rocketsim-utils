@@ -5,10 +5,7 @@ use crate::{
         collision::StaticPlaneShape,
         dynamics::{contact_constraint::resolve_single_bilateral, rigid_body::RigidBody},
     },
-    consts::{
-        UU_TO_BT,
-        bullet_vehicle::{self, SUSPENSION_FORCE_SCALE_BACK, SUSPENSION_FORCE_SCALE_FRONT},
-    },
+    consts::{UU_TO_BT, bullet_vehicle},
 };
 
 pub const NUM_WHEELS: usize = 4;
@@ -203,10 +200,10 @@ impl VehicleRL {
 
     fn update_suspension(&self, cb: &mut RigidBody, delta_time: f32) {
         const SUSPENSION_FORCE_SCALE: Vec4 = Vec4::new(
-            SUSPENSION_FORCE_SCALE_FRONT,
-            SUSPENSION_FORCE_SCALE_FRONT,
-            SUSPENSION_FORCE_SCALE_BACK,
-            SUSPENSION_FORCE_SCALE_BACK,
+            bullet_vehicle::SUSPENSION_FORCE_SCALE_FRONT,
+            bullet_vehicle::SUSPENSION_FORCE_SCALE_FRONT,
+            bullet_vehicle::SUSPENSION_FORCE_SCALE_BACK,
+            bullet_vehicle::SUSPENSION_FORCE_SCALE_BACK,
         );
         const COMPRESSION_DAMPING: Vec4 = Vec4::splat(bullet_vehicle::WHEELS_DAMPING_COMPRESSION);
         const RELAXATION_DAMPING: Vec4 = Vec4::splat(bullet_vehicle::WHEELS_DAMPING_RELAXATION);
