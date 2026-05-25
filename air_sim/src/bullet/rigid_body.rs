@@ -2,6 +2,7 @@ use glam::{Affine3A, Mat3A, Quat, Vec3A};
 
 use crate::bullet::transform_util::integrate_trans;
 
+#[derive(Clone, Copy)]
 pub struct RigidBody {
     pub world_trans: Affine3A,
     pub world_rotation: Quat,

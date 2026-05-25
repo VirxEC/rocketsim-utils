@@ -6,6 +6,7 @@ use crate::{
     consts::{BT_TO_UU, UU_TO_BT, car as car_consts},
 };
 
+#[derive(Clone, Copy)]
 pub struct Car {
     config: CarBodyConfig,
     state: CarState,

@@ -1,5 +1,6 @@
 use crate::{Car, CarBodyConfig, CarControls, CarState, GameMode, MutatorConfig, consts::UU_TO_BT};
 
+#[derive(Clone, Copy)]
 pub struct Arena {
     car: Car,
     mutator_config: MutatorConfig,
