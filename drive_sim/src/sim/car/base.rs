@@ -91,9 +91,13 @@ impl Car {
         self.state = *state;
     }
 
-    fn update_wheels(&mut self, rb: &mut RigidBody, forward_speed_uu: f32, tick_time: f32) {
-        const STICKY_FORCE_SCALE: Vec3A = Vec3A::new(0.0, 0.0, 0.5 * consts::GRAVITY_Z * UU_TO_BT);
-
+    fn update_wheels(
+        &mut self,
+        rb: &mut RigidBody,
+        gravity: Vec3A,
+        forward_speed_uu: f32,
+        tick_time: f32,
+    ) {
         let handbrake_delta = if self.state.controls.handbrake {
             drive_consts::POWERSLIDE_RISE_RATE
         } else {
@@ -211,7 +215,8 @@ impl Car {
         self.bullet_vehicle.lat_friction = lat_friction;
         self.bullet_vehicle.long_friction = long_friction;
 
-        rb.apply_central_force(STICKY_FORCE_SCALE);
+        let stick_force_scale = 0.5 * gravity;
+        rb.apply_central_force(stick_force_scale);
     }
 
     fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig, tick_time: f32) {
@@ -260,6 +265,7 @@ impl Car {
 
         self.update_wheels(
             &mut collision_world.collision_obj,
+            mutator_config.gravity * UU_TO_BT,
             forward_speed_uu,
             tick_time,
         );
@@ -287,6 +293,7 @@ impl Car {
         }
 
         self.state.phys.rot_mat = rb.get_world_trans().matrix3;
+        self.state.phys.rot_quat = rb.get_world_quat_trans();
         self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;
         self.state.phys.vel = rb.lin_vel * BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;

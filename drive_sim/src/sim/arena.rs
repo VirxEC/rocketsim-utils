@@ -19,12 +19,15 @@ pub struct Arena {
 impl Arena {
     #[must_use]
     pub fn new(game_mode: GameMode, tps: u8) -> Self {
+        Self::new_with_config(game_mode, MutatorConfig::new(game_mode), tps)
+    }
+
+    #[must_use]
+    pub fn new_with_config(game_mode: GameMode, mutator_config: MutatorConfig, tps: u8) -> Self {
         assert!(
             (30..=120).contains(&tps),
             "tps must be between 30 and 120 inclusive"
         );
-
-        let mutator_config = MutatorConfig::new(game_mode);
 
         let (car, car_body) = Car::new(&mutator_config, CarBodyConfig::OCTANE);
         let bullet_world = DiscreteDynamicsWorld {
@@ -76,7 +79,10 @@ impl Arena {
         self.car
             .pre_tick_update(&mut self.bullet_world, &self.mutator_config, self.tick_time);
 
-        self.bullet_world.step_simulation(self.tick_time);
+        self.bullet_world.step_simulation(
+            self.mutator_config.gravity * consts::UU_TO_BT,
+            self.tick_time,
+        );
 
         self.car
             .finish_physics_tick(&mut self.bullet_world.collision_obj);

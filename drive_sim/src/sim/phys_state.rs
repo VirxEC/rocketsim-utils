@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use glam::{Mat3A, Vec3A};
+use glam::{Mat3A, Quat, Vec3A};
 
 /// Default is not implemented for this struct,
 /// because the initial start height of the ball/car is different.
@@ -9,6 +9,7 @@ use glam::{Mat3A, Vec3A};
 pub struct PhysState {
     pub pos: Vec3A,
     pub rot_mat: Mat3A,
+    pub rot_quat: Quat,
     pub vel: Vec3A,
     pub ang_vel: Vec3A,
 }
