@@ -48,11 +48,6 @@ impl RigidBody {
         &self.world_trans
     }
 
-    #[inline]
-    pub const fn get_world_quat_trans(&self) -> Quat {
-        self.quat_trans
-    }
-
     fn get_inertia_tensor(world_mat: Mat3A, inv_inertia_local: Vec3A) -> Mat3A {
         let mut scaled_mat = world_mat.transpose();
         scaled_mat.x_axis *= inv_inertia_local;

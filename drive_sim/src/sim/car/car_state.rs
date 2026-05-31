@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use glam::{Mat3A, Quat, Vec3A};
+use glam::{Mat3A, Vec3A};
 
 use crate::{CarControls, PhysState, sim::consts::car};
 
@@ -33,7 +33,6 @@ impl CarState {
         phys: PhysState {
             pos: Vec3A::new(0.0, 0.0, car::spawn::REST_Z),
             rot_mat: Mat3A::IDENTITY,
-            rot_quat: Quat::IDENTITY,
             vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
         },

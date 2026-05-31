@@ -293,7 +293,6 @@ impl Car {
         }
 
         self.state.phys.rot_mat = rb.get_world_trans().matrix3;
-        self.state.phys.rot_quat = rb.get_world_quat_trans();
         self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;
         self.state.phys.vel = rb.lin_vel * BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;
