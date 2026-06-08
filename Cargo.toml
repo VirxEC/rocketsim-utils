@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
-glam = "0.32.1"
+glam = "0.33.0"
 
 [workspace.lints.clippy]
 all = "warn"
