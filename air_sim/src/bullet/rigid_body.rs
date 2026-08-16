@@ -2,6 +2,16 @@ use glam::{Affine3A, Mat3A, Quat, Vec3A};
 
 use crate::bullet::transform_util::integrate_trans;
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Impulse {
+    /// (lin_impulse)
+    Linear(Vec3A),
+    /// (lin_impulse, rel_pos_offset)
+    LinearRelPos(Vec3A, Vec3A),
+    /// (ang_impulse)
+    Angular(Vec3A),
+}
+
 #[derive(Clone, Copy)]
 pub struct RigidBody {
     pub world_trans: Affine3A,
@@ -9,16 +19,17 @@ pub struct RigidBody {
     pub inv_inertia_tensor_world: Mat3A,
     pub lin_vel: Vec3A,
     pub ang_vel: Vec3A,
-    pub inverse_mass: f32,
+    pub mass: f32,
+    pub inv_mass: f32,
     pub gravity: Vec3A,
     pub inv_inertia_local: Vec3A,
-    pub total_force: Vec3A,
-    pub total_torque: Vec3A,
+    pub accum_lin_vel: Vec3A,
+    pub accum_ang_vel: Vec3A,
 }
 
 impl RigidBody {
     pub fn new(mass: f32, gravity: Vec3A, local_inertia: Vec3A) -> Self {
-        let inverse_mass = 1.0 / mass;
+        let inv_mass = 1.0 / mass;
 
         let inv_inertia_local = Vec3A::select(
             local_inertia.cmpeq(Vec3A::ZERO),
@@ -34,11 +45,12 @@ impl RigidBody {
             inv_inertia_tensor_world,
             lin_vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
-            inverse_mass,
+            mass,
+            inv_mass,
             gravity,
             inv_inertia_local,
-            total_force: Vec3A::ZERO,
-            total_torque: Vec3A::ZERO,
+            accum_lin_vel: Vec3A::ZERO,
+            accum_ang_vel: Vec3A::ZERO,
         }
     }
 
@@ -56,23 +68,40 @@ impl RigidBody {
             Self::get_inertia_tensor(self.world_trans.matrix3, self.inv_inertia_local);
     }
 
-    pub fn apply_torque(&mut self, torque: Vec3A) {
-        debug_assert!(!torque.is_nan());
-        self.total_torque += torque;
-    }
+    /// Add an impulse of a given type
+    ///
+    /// `massed`: Scale down by `self.inv_mass`
+    ///
+    /// `accum`: Accumulate this impulse to be applied while
+    /// stepping the simulation (instead of immediately)
+    pub fn add_impulse(&mut self, impulse: Impulse, massed: bool, accum: bool) {
+        let mut lin_impulse = Vec3A::ZERO;
+        let mut ang_impulse = Vec3A::ZERO;
 
-    pub fn apply_central_impulse(&mut self, impulse: Vec3A) {
-        debug_assert!(!impulse.is_nan());
-        self.lin_vel += impulse * self.inverse_mass;
-    }
+        let massed_scaler = if massed { self.inv_mass } else { 1.0 };
+        match impulse {
+            Impulse::Linear(v) => {
+                lin_impulse = v * massed_scaler;
+            }
+            Impulse::LinearRelPos(v, rel_pos) => {
+                lin_impulse = v * massed_scaler;
+                ang_impulse = self.inv_inertia_tensor_world * rel_pos.cross(v);
+                if !massed {
+                    ang_impulse *= self.mass; // Have to undo the effects of inv inertia tensor
+                }
+            }
+            Impulse::Angular(av) => {
+                ang_impulse = av * massed_scaler;
+            }
+        };
 
-    pub fn apply_central_force(&mut self, force: Vec3A) {
-        debug_assert!(!force.is_nan());
-        self.total_force += force;
-    }
-
-    pub fn apply_gravity(&mut self) {
-        self.apply_central_force(self.gravity);
+        if accum {
+            self.accum_lin_vel += lin_impulse;
+            self.accum_ang_vel += ang_impulse;
+        } else {
+            self.lin_vel += lin_impulse;
+            self.ang_vel += ang_impulse;
+        }
     }
 
     pub fn integration_trans(&mut self, time_step: f32) {
@@ -88,9 +117,9 @@ impl RigidBody {
         self.update_inertia_tensor();
     }
 
-    pub const fn clear_forces(&mut self) {
-        self.total_force = Vec3A::ZERO;
-        self.total_torque = Vec3A::ZERO;
+    pub const fn clear_accum_vels(&mut self) {
+        self.accum_lin_vel = Vec3A::ZERO;
+        self.accum_ang_vel = Vec3A::ZERO;
     }
 
     pub fn get_forward_speed(&self) -> f32 {
@@ -98,12 +127,22 @@ impl RigidBody {
     }
 
     pub fn step_simulation(&mut self, time_step: f32) {
-        self.apply_gravity();
+        self.add_impulse(Impulse::Linear(self.gravity * time_step), false, true);
 
-        self.lin_vel += self.total_force * time_step;
-        self.ang_vel += self.inv_inertia_tensor_world * self.total_torque * time_step;
+        self.lin_vel += self.accum_lin_vel;
+        self.ang_vel += self.accum_ang_vel;
 
         self.integration_trans(time_step);
-        self.clear_forces();
+        self.clear_accum_vels();
+    }
+
+    pub fn limit_vels(&mut self, max_lin_speed: f32, max_ang_speed: f32) {
+        if self.lin_vel.length_squared() > max_lin_speed.powi(2) {
+            self.lin_vel = self.lin_vel.normalize_or_zero() * max_lin_speed;
+        }
+
+        if self.ang_vel.length_squared() > max_ang_speed.powi(2) {
+            self.ang_vel = self.ang_vel.normalize_or_zero() * max_ang_speed;
+        }
     }
 }
