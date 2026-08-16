@@ -76,6 +76,15 @@ impl Arena {
 
     /// Steps the arena for 1 tick, returning the events produced during that tick
     pub fn step_tick(&mut self) {
+        // Clear the impulses accumulated during the previous tick
+        self.bullet_world.clear_accum_forces();
+
+        // Limit velocities pre-tick
+        self.bullet_world.collision_obj.limit_vels(
+            consts::car::MAX_SPEED * consts::UU_TO_BT,
+            consts::car::MAX_ANG_SPEED,
+        );
+
         self.car
             .pre_tick_update(&mut self.bullet_world, &self.mutator_config, self.tick_time);
 
@@ -83,6 +92,9 @@ impl Arena {
             self.mutator_config.gravity * consts::UU_TO_BT,
             self.tick_time,
         );
+
+        self.car
+            .post_tick_update(&mut self.bullet_world, self.tick_time);
 
         self.car
             .finish_physics_tick(&mut self.bullet_world.collision_obj);
@@ -177,6 +189,8 @@ impl Arena {
 
     #[must_use]
     pub fn num_boost_pads(&self) -> usize {
-        self.boost_pads().len()
+        self.boost_pad_grid
+            .as_ref()
+            .map_or(0, |grid| grid.all_pads.len())
     }
 }

@@ -46,7 +46,7 @@ pub fn resolve_single_bilateral(
     let min_v_jt_0_z = a_j_z * inv.z;
 
     let jac_diag_ab =
-        chassis.inverse_mass + min_v_jt_0_x * a_j_x + min_v_jt_0_y * a_j_y + min_v_jt_0_z * a_j_z;
+        chassis.inv_mass + min_v_jt_0_x * a_j_x + min_v_jt_0_y * a_j_y + min_v_jt_0_z * a_j_z;
 
     CONTACT_DAMPING * rel_vel / jac_diag_ab
 }

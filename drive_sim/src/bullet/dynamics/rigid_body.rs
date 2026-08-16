@@ -2,6 +2,16 @@ use std::f32::consts::FRAC_PI_4;
 
 use glam::{Affine3A, Mat3A, Quat, Vec3A, Vec4};
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Impulse {
+    /// (lin_impulse)
+    Linear(Vec3A),
+    /// (lin_impulse, rel_pos_offset)
+    LinearRelPos(Vec3A, Vec3A),
+    /// (ang_impulse)
+    Angular(Vec3A),
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct RigidBody {
     world_trans: Affine3A,
@@ -10,9 +20,11 @@ pub struct RigidBody {
     pub lin_vel: Vec3A,
     pub ang_vel: Vec3A,
     pub mass: f32,
-    pub inverse_mass: f32,
+    pub inv_mass: f32,
     pub inv_inertia_local: Vec3A,
-    pub total_force: Vec3A,
+
+    pub accum_lin_vel: Vec3A,
+    pub accum_ang_vel: Vec3A,
 }
 
 impl RigidBody {
@@ -34,12 +46,13 @@ impl RigidBody {
             mass,
             world_trans,
             quat_trans: Quat::IDENTITY,
-            inverse_mass: 1.0 / mass,
+            inv_mass: 1.0 / mass,
             inv_inertia_local,
             inv_inertia_tensor_world,
             lin_vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
-            total_force: Vec3A::ZERO,
+            accum_lin_vel: Vec3A::ZERO,
+            accum_ang_vel: Vec3A::ZERO,
         }
     }
 
@@ -62,13 +75,40 @@ impl RigidBody {
             Self::get_inertia_tensor(self.world_trans.matrix3, self.inv_inertia_local);
     }
 
-    pub fn apply_torque_impulse(&mut self, torque: Vec3A) {
-        self.ang_vel += self.inv_inertia_tensor_world * torque;
-    }
+    /// Add an impulse of a given type
+    ///
+    /// `massed`: Scale down by `self.inv_mass`
+    ///
+    /// `accum`: Accumulate this impulse to be applied while
+    /// stepping the simulation (instead of immediately)
+    pub fn add_impulse(&mut self, impulse: Impulse, massed: bool, accum: bool) {
+        let mut lin_impulse = Vec3A::ZERO;
+        let mut ang_impulse = Vec3A::ZERO;
 
-    pub fn apply_impulse(&mut self, impulse: Vec3A, rel_pos: Vec3A) {
-        self.apply_central_impulse(impulse);
-        self.apply_torque_impulse(rel_pos.cross(impulse));
+        let massed_scaler = if massed { self.inv_mass } else { 1.0 };
+        match impulse {
+            Impulse::Linear(v) => {
+                lin_impulse = v * massed_scaler;
+            }
+            Impulse::LinearRelPos(v, rel_pos) => {
+                lin_impulse = v * massed_scaler;
+                ang_impulse = self.inv_inertia_tensor_world * rel_pos.cross(v);
+                if !massed {
+                    ang_impulse *= self.mass; // Have to undo the effects of inv inertia tensor
+                }
+            }
+            Impulse::Angular(av) => {
+                ang_impulse = av * massed_scaler;
+            }
+        };
+
+        if accum {
+            self.accum_lin_vel += lin_impulse;
+            self.accum_ang_vel += ang_impulse;
+        } else {
+            self.lin_vel += lin_impulse;
+            self.ang_vel += ang_impulse;
+        }
     }
 
     #[inline]
@@ -86,7 +126,7 @@ impl RigidBody {
             impulse_y.element_sum(),
             impulse_z.element_sum(),
         );
-        self.apply_central_impulse(total_impulse);
+        self.lin_vel += total_impulse * self.inv_mass;
 
         let torque_x = rel_y * impulse_z - rel_z * impulse_y;
         let torque_y = rel_z * impulse_x - rel_x * impulse_z;
@@ -97,17 +137,7 @@ impl RigidBody {
             torque_y.element_sum(),
             torque_z.element_sum(),
         );
-        self.apply_torque_impulse(torque);
-    }
-
-    #[inline]
-    pub fn apply_central_impulse(&mut self, impulse: Vec3A) {
-        self.lin_vel += impulse * self.inverse_mass;
-    }
-
-    #[inline]
-    pub fn apply_central_force(&mut self, force: Vec3A) {
-        self.total_force += force;
+        self.ang_vel += self.inv_inertia_tensor_world * torque;
     }
 
     pub fn integrate_trans(&mut self, tick_time: f32) {
@@ -147,8 +177,9 @@ impl RigidBody {
     }
 
     #[inline]
-    pub const fn clear_forces(&mut self) {
-        self.total_force = Vec3A::ZERO;
+    pub const fn clear_accum_vels(&mut self) {
+        self.accum_lin_vel = Vec3A::ZERO;
+        self.accum_ang_vel = Vec3A::ZERO;
     }
 
     #[inline]
@@ -164,5 +195,15 @@ impl RigidBody {
     #[inline]
     pub const fn get_world_pos(&self) -> Vec3A {
         self.get_world_trans().translation
+    }
+
+    pub fn limit_vels(&mut self, max_lin_speed: f32, max_ang_speed: f32) {
+        if self.lin_vel.length_squared() > max_lin_speed.powi(2) {
+            self.lin_vel = self.lin_vel.normalize_or_zero() * max_lin_speed;
+        }
+
+        if self.ang_vel.length_squared() > max_ang_speed.powi(2) {
+            self.ang_vel = self.ang_vel.normalize_or_zero() * max_ang_speed;
+        }
     }
 }

@@ -227,7 +227,7 @@ impl VehicleRL {
 
         let total_force =
             suspension_force.x + suspension_force.y + suspension_force.z + suspension_force.w;
-        cb.lin_vel.z += total_force * cb.inverse_mass;
+        cb.lin_vel.z += total_force * cb.inv_mass;
 
         let torque_x = rel_y * suspension_force;
         let torque_y = -rel_x * suspension_force;

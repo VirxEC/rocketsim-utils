@@ -6,7 +6,7 @@ use crate::{
         collision::BoxShape,
         dynamics::{
             discrete_dynamics_world::DiscreteDynamicsWorld,
-            rigid_body::RigidBody,
+            rigid_body::{Impulse, RigidBody},
             vehicle::{NUM_WHEELS, VehicleRL},
         },
         linear_math::QuatExt,
@@ -200,7 +200,15 @@ impl Car {
         let mut long_friction = Vec4::ONE;
 
         if self.state.handbrake_val != 0.0 {
-            lat_friction *= 1.0 - curves::HANDBRAKE_LAT_FRICTION_FACTOR * self.state.handbrake_val;
+            let handbrake_amount = self.state.handbrake_val;
+
+            let mut handbrake_lat_friction = [0.0; 4];
+            for i in 0..NUM_WHEELS {
+                handbrake_lat_friction[i] =
+                    curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input[i]);
+            }
+            lat_friction *=
+                1.0 + (Vec4::from_array(handbrake_lat_friction) - 1.0) * handbrake_amount;
 
             let mut handbrake_long_friction = [0.0; 4];
             for i in 0..NUM_WHEELS {
@@ -209,14 +217,14 @@ impl Car {
             }
 
             long_friction *=
-                1.0 + (Vec4::from_array(handbrake_long_friction) - 1.0) * self.state.handbrake_val;
+                1.0 + (Vec4::from_array(handbrake_long_friction) - 1.0) * handbrake_amount;
         }
 
         self.bullet_vehicle.lat_friction = lat_friction;
         self.bullet_vehicle.long_friction = long_friction;
 
         let stick_force_scale = 0.5 * gravity;
-        rb.apply_central_force(stick_force_scale);
+        rb.add_impulse(Impulse::Linear(stick_force_scale * tick_time), false, true);
     }
 
     fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig, tick_time: f32) {
@@ -233,8 +241,14 @@ impl Car {
             self.state.time_since_boosted = 0.0;
             self.state.boost -= mutator_config.boost_used_per_second * tick_time;
 
-            rb.apply_central_force(
-                self.state.get_forward_dir() * (consts::car::boost::ACCEL_GROUND * UU_TO_BT),
+            rb.add_impulse(
+                Impulse::Linear(
+                    self.state.get_forward_dir()
+                        * (consts::car::boost::ACCEL_GROUND * UU_TO_BT)
+                        * tick_time,
+                ),
+                false,
+                true,
             );
         } else {
             self.state.boosting_time = 0.0;
@@ -259,10 +273,6 @@ impl Car {
         self.state.controls = self.state.controls.clamp();
         let forward_speed_uu = collision_world.collision_obj.get_forward_speed() * BT_TO_UU;
 
-        // Do first part of the btVehicleRL update (update wheel transforms, do traces, calculate friction impulses)
-        self.bullet_vehicle
-            .update_vehicle_first(&collision_world.collision_obj);
-
         self.update_wheels(
             &mut collision_world.collision_obj,
             mutator_config.gravity * UU_TO_BT,
@@ -270,8 +280,6 @@ impl Car {
             tick_time,
         );
 
-        self.bullet_vehicle
-            .update_vehicle_second(&mut collision_world.collision_obj, tick_time);
         self.update_boost(
             &mut collision_world.collision_obj,
             mutator_config,
@@ -279,19 +287,20 @@ impl Car {
         );
     }
 
+    /// Updates the wheels (wheel transforms, raycasts, suspension, and friction impulses)
+    /// after the physics step.
+    pub fn post_tick_update(
+        &mut self,
+        collision_world: &mut DiscreteDynamicsWorld,
+        tick_time: f32,
+    ) {
+        self.bullet_vehicle
+            .update_vehicle_first(&collision_world.collision_obj);
+        self.bullet_vehicle
+            .update_vehicle_second(&mut collision_world.collision_obj, tick_time);
+    }
+
     pub fn finish_physics_tick(&mut self, rb: &mut RigidBody) {
-        const MAX_SPEED: f32 = car_consts::MAX_SPEED * UU_TO_BT;
-
-        let lin_vel_sq = rb.lin_vel.length_squared();
-        if lin_vel_sq > MAX_SPEED * MAX_SPEED {
-            rb.lin_vel = rb.lin_vel / lin_vel_sq.sqrt() * MAX_SPEED;
-        }
-
-        let ang_vel_sq = rb.ang_vel.length_squared();
-        if ang_vel_sq > car_consts::MAX_ANG_SPEED * car_consts::MAX_ANG_SPEED {
-            rb.ang_vel = rb.ang_vel / ang_vel_sq.sqrt() * car_consts::MAX_ANG_SPEED;
-        }
-
         self.state.phys.rot_mat = rb.get_world_trans().matrix3;
         self.state.phys.pos = rb.get_world_trans().translation * BT_TO_UU;
         self.state.phys.vel = rb.lin_vel * BT_TO_UU;
