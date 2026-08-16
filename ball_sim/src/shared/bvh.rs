@@ -199,6 +199,7 @@ impl Tree {
             match root_node.node_type {
                 BvhNodeType::Leaf { leaf_idx: _ } => {
                     if aabb_overlap {
+                        std::hint::cold_path();
                         return true;
                     }
 
@@ -233,6 +234,7 @@ impl Tree {
             match root_node.node_type {
                 BvhNodeType::Leaf { leaf_idx } => {
                     if aabb_overlap {
+                        std::hint::cold_path();
                         node_callback.process_node(leaf_idx);
                     }
 

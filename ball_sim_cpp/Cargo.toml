@@ -7,7 +7,7 @@ edition.workspace = true
 crate-type = ["staticlib"]
 
 [dependencies]
-ahash = "0.8.12"
+rustc-hash = "2.1.2"
 ball_sim = { path = "../ball_sim" }
 cxx = "1.0.194"
 glam = { workspace = true }

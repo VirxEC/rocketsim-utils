@@ -6,8 +6,8 @@ use std::{
     time::Instant,
 };
 
-use ahash::AHashMap;
 use log::{error, info, warn};
+use rustc_hash::FxHashMap;
 
 use crate::{
     bullet::collision::shapes::bvh_triangle_mesh_shape::BvhTriangleMeshShape,
@@ -23,7 +23,7 @@ use crate::{
 static HAS_INITIALIZED_LOCK: OnceLock<()> = OnceLock::new();
 
 pub static ARENA_COLLISION_SHAPES: RwLock<
-    Option<AHashMap<GameMode, Vec<Arc<BvhTriangleMeshShape>>>>,
+    Option<FxHashMap<GameMode, Vec<Arc<BvhTriangleMeshShape>>>>,
 > = RwLock::new(None);
 
 pub fn is_initialized() -> bool {
@@ -56,7 +56,7 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
         ));
     }
 
-    let mut mesh_file_map = AHashMap::new();
+    let mut mesh_file_map = FxHashMap::default();
 
     for game_mode in GAMEMODES_WITH_UNIQUE_MESHES {
         let folder = collision_meshes_folder.join(game_mode.name());
@@ -86,7 +86,7 @@ fn init_from_path(collision_meshes_folder: &Path, silent: bool) -> IoResult<()> 
 }
 
 pub fn init_from_mem(
-    byte_mesh_file_map: AHashMap<GameMode, Vec<Vec<u8>>>,
+    byte_mesh_file_map: FxHashMap<GameMode, Vec<Vec<u8>>>,
     silent: bool,
 ) -> IoResult<()> {
     if !silent {
@@ -106,7 +106,7 @@ pub fn init_from_mem(
 
     // TODO: DropshotTiles::Init();
 
-    let mut arena_collision_shapes = AHashMap::new();
+    let mut arena_collision_shapes = FxHashMap::default();
 
     for (game_mode, byte_mesh_files) in byte_mesh_file_map {
         info!("Loading arena meshes for {}...", game_mode.name());

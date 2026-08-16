@@ -26,6 +26,18 @@ impl SphereRigidBodyConstructionInfo {
     }
 }
 
+/// An impulse to apply to a rigid body
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[allow(dead_code)] // The other variants exist for API parity with RocketSim's `Impulse`
+pub enum Impulse {
+    /// (lin_impulse)
+    Linear(Vec3A),
+    /// (lin_impulse, rel_pos_offset)
+    LinearRelPos(Vec3A, Vec3A),
+    /// (ang_impulse)
+    Angular(Vec3A),
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SphereRigidBody {
     world_trans: Vec3A,
@@ -35,17 +47,18 @@ pub struct SphereRigidBody {
     pub restitution: f32,
     pub lin_vel: Vec3A,
     pub ang_vel: Vec3A,
-    pub inverse_mass: f32,
-    pub gravity: Vec3A,
+    pub mass: f32,
+    pub inv_mass: f32,
     pub inv_inertia_local: Vec3A,
-    pub total_force: Vec3A,
+    pub accum_lin_vel: Vec3A,
+    pub accum_ang_vel: Vec3A,
     pub linear_damping: f32,
-    pub inv_mass: Vec3A,
+    pub inv_mass_splat: Vec3A,
 }
 
 impl SphereRigidBody {
     pub fn new(info: SphereRigidBodyConstructionInfo) -> Self {
-        let inverse_mass = if info.mass == 0.0 {
+        let inv_mass = if info.mass == 0.0 {
             0.0
         } else {
             1.0 / info.mass
@@ -67,12 +80,13 @@ impl SphereRigidBody {
             restitution: info.restitution,
             lin_vel: Vec3A::ZERO,
             ang_vel: Vec3A::ZERO,
-            inverse_mass,
-            gravity: Vec3A::ZERO,
+            mass: info.mass,
+            inv_mass,
             inv_inertia_local,
-            total_force: Vec3A::ZERO,
+            accum_lin_vel: Vec3A::ZERO,
+            accum_ang_vel: Vec3A::ZERO,
             linear_damping,
-            inv_mass: Vec3A::splat(inverse_mass),
+            inv_mass_splat: Vec3A::splat(inv_mass),
         }
     }
 
@@ -88,10 +102,6 @@ impl SphereRigidBody {
         &self.shape
     }
 
-    pub fn set_gravity(&mut self, acceleration: Vec3A) {
-        self.gravity = acceleration * (1.0 / self.inverse_mass);
-    }
-
     pub fn set_lin_vel(&mut self, lin_vel: Vec3A) {
         debug_assert!(!lin_vel.is_nan());
         self.lin_vel = lin_vel;
@@ -102,22 +112,47 @@ impl SphereRigidBody {
         self.ang_vel = ang_vel;
     }
 
-    pub fn apply_central_impulse(&mut self, impulse: Vec3A) {
-        debug_assert!(!impulse.is_nan());
-        self.lin_vel += impulse * self.inverse_mass;
-    }
+    /// Add an impulse of a given type
+    ///
+    /// `massed`: Scale down by `self.inv_mass`
+    ///
+    /// `accum`: Accumulate this impulse to be applied while
+    /// stepping the simulation (instead of immediately)
+    #[inline(always)] // Should assure const evaluation
+    pub fn add_impulse(&mut self, impulse: Impulse, massed: bool, accum: bool) {
+        let mut lin_impulse = Vec3A::ZERO;
+        let mut ang_impulse = Vec3A::ZERO;
 
-    pub fn apply_central_force(&mut self, force: Vec3A) {
-        debug_assert!(!force.is_nan());
-        self.total_force += force;
-    }
+        let massed_scaler = if massed { self.inv_mass } else { 1.0 };
+        match impulse {
+            Impulse::Linear(v) => {
+                lin_impulse = v * massed_scaler;
+            }
+            Impulse::LinearRelPos(v, rel_pos) => {
+                lin_impulse = v * massed_scaler;
+                ang_impulse = self.inv_inertia_local * rel_pos.cross(v);
+                if !massed {
+                    ang_impulse *= self.mass; // Have to undo the effects of inv inertia tensor
+                }
+            }
+            Impulse::Angular(av) => {
+                ang_impulse = av * massed_scaler;
+            }
+        };
 
-    pub fn apply_gravity(&mut self) {
-        self.apply_central_force(self.gravity);
+        if accum {
+            self.accum_lin_vel += lin_impulse;
+            self.accum_ang_vel += ang_impulse;
+        } else {
+            self.lin_vel += lin_impulse;
+            self.ang_vel += ang_impulse;
+        }
     }
 
     pub fn apply_damping(&mut self, time_step: f32) {
-        self.lin_vel *= (1.0 - self.linear_damping).powf(time_step);
+        if self.linear_damping != 0.0 {
+            self.lin_vel *= (1.0 - self.linear_damping).powf(time_step);
+        }
     }
 
     pub fn predict_integration_trans(&self, time_step: f32) -> Vec3A {
@@ -133,15 +168,18 @@ impl SphereRigidBody {
         self.lin_vel + self.ang_vel.cross(rel_pos)
     }
 
-    pub const fn clear_forces(&mut self) {
-        self.total_force = Vec3A::ZERO;
+    pub const fn clear_accum_vels(&mut self) {
+        self.accum_lin_vel = Vec3A::ZERO;
+        self.accum_ang_vel = Vec3A::ZERO;
     }
 
-    pub fn get_mass(&self) -> f32 {
-        if self.inverse_mass == 0.0 {
-            0.0
-        } else {
-            1.0 / self.inverse_mass
+    pub fn limit_vels(&mut self, max_lin_speed: f32, max_ang_speed: f32) {
+        if self.lin_vel.length_squared() > max_lin_speed.powi(2) {
+            self.lin_vel = self.lin_vel.normalize_or_zero() * max_lin_speed;
+        }
+
+        if self.ang_vel.length_squared() > max_ang_speed.powi(2) {
+            self.ang_vel = self.ang_vel.normalize_or_zero() * max_ang_speed;
         }
     }
 }

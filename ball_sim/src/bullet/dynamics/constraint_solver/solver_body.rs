@@ -33,15 +33,15 @@ impl SolverBody {
         self.lin_vel + self.external_force_impulse + self.ang_vel.cross(rel_pos)
     }
 
-    pub fn update(&mut self, rb: &SphereRigidBody, time_step: f32) {
+    pub fn update(&mut self, rb: &SphereRigidBody) {
         self.delta_lin_vel = Vec3A::ZERO;
         self.delta_ang_vel = Vec3A::ZERO;
-        self.inv_mass = rb.inv_mass;
+        self.inv_mass = rb.inv_mass_splat;
         self.push_vel = Vec3A::ZERO;
         self.turn_vel = Vec3A::ZERO;
         self.lin_vel = rb.lin_vel;
         self.ang_vel = rb.ang_vel;
-        self.external_force_impulse = rb.total_force * rb.inverse_mass * time_step;
+        self.external_force_impulse = rb.accum_lin_vel;
     }
 
     pub fn solve_group_split_impulse_iterations(&mut self, contact: &mut SolverConstraint) {

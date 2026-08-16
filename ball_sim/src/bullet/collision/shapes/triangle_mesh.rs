@@ -14,7 +14,9 @@ impl TriangleMesh {
         debug_assert_eq!(ids.len() % 3, 0);
 
         let triangles: Box<[TriangleShape]> = ids
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|ids| TriangleShape::from_points_iter(ids.iter().map(|&j| verts[j])))
             .collect();
 

@@ -6,7 +6,7 @@ use crate::{
     BallState, GameMode, MutatorConfig,
     bullet::{
         collision::shapes::sphere_shape::SphereShape,
-        dynamics::sphere_rigid_body::{SphereRigidBody, SphereRigidBodyConstructionInfo},
+        dynamics::sphere_rigid_body::{Impulse, SphereRigidBody, SphereRigidBodyConstructionInfo},
         linear_math::angle::Angle,
     },
     consts::{UU_TO_BT, dropshot, heatseeker},
@@ -17,7 +17,6 @@ use crate::{
 pub struct Ball {
     pub state: BallState,
     pub ground_stick_applied: bool,
-    pub vel_impulse_cache: Option<Vec3A>,
 }
 
 impl Ball {
@@ -57,7 +56,6 @@ impl Ball {
             Self {
                 state: BallState::DEFAULT,
                 ground_stick_applied: false,
-                vel_impulse_cache: None,
             },
             SphereRigidBody::new(info),
         )
@@ -156,8 +154,10 @@ impl Ball {
                             consts::ball::HOOPS_LAUNCH_Z_VEL
                         };
 
-                        rb.apply_central_impulse(
-                            Vec3A::new(0.0, 0.0, launch_vel_z) * rb.get_mass() * UU_TO_BT,
+                        rb.add_impulse(
+                            Impulse::Linear(Vec3A::new(0.0, 0.0, launch_vel_z) * UU_TO_BT),
+                            false,
+                            false,
                         );
                     }
                 }
@@ -166,27 +166,7 @@ impl Ball {
         }
     }
 
-    pub(crate) fn finish_physics_tick(
-        &mut self,
-        rb: &mut SphereRigidBody,
-        mutator_config: &MutatorConfig,
-    ) {
-        if let Some(vel_impulse_cache) = self.vel_impulse_cache {
-            rb.lin_vel += vel_impulse_cache * UU_TO_BT;
-            self.vel_impulse_cache = None;
-        }
-
-        let ball_max_speed_bt = mutator_config.ball_max_speed * UU_TO_BT;
-        let lin_vel_sq = rb.lin_vel.length_squared();
-        if lin_vel_sq > ball_max_speed_bt * ball_max_speed_bt {
-            rb.lin_vel = rb.lin_vel * (1.0 / lin_vel_sq.sqrt()) * ball_max_speed_bt;
-        }
-
-        let ang_vel_sq = rb.ang_vel.length_squared();
-        if ang_vel_sq > consts::ball::MAX_ANG_SPEED * consts::ball::MAX_ANG_SPEED {
-            rb.ang_vel = rb.ang_vel * (1.0 / ang_vel_sq.sqrt()) * consts::ball::MAX_ANG_SPEED;
-        }
-
+    pub(crate) fn finish_physics_tick(&mut self, rb: &mut SphereRigidBody) {
         self.state.phys.vel = rb.lin_vel * consts::BT_TO_UU;
         self.state.phys.ang_vel = rb.ang_vel;
 
@@ -195,7 +175,7 @@ impl Ball {
         self.state.tick_count_since_kickoff += 1;
     }
 
-    pub fn on_world_hit(&mut self, normal: Vec3A, game_mode: GameMode) {
+    pub fn on_world_hit(&mut self, rb: &mut SphereRigidBody, game_mode: GameMode, normal: Vec3A) {
         match game_mode {
             GameMode::Heatseeker => {
                 const ARENA_EXTENT: Vec3A = consts::arena::get_aabb(GameMode::Soccar).max;
@@ -227,11 +207,7 @@ impl Ball {
                         * self.state.phys.vel.length()
                         * heatseeker::WALL_BOUNCE_FORCE_SCALE;
 
-                    if let Some(vel_impulse_cache) = self.vel_impulse_cache.as_mut() {
-                        *vel_impulse_cache += bounce_impulse * UU_TO_BT;
-                    } else {
-                        self.vel_impulse_cache = Some(bounce_impulse * UU_TO_BT);
-                    }
+                    rb.add_impulse(Impulse::Linear(bounce_impulse * UU_TO_BT), false, true);
                 }
             }
             GameMode::Snowday => todo!(),

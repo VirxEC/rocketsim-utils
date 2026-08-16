@@ -72,7 +72,7 @@ impl SeqImpulseConstraintSolver {
         manifolds: &mut ArrayVec<PersistentManifold, 4>,
         time_step: f32,
     ) {
-        self.setup_solver_bodies(ball_obj, time_step);
+        self.setup_solver_bodies(ball_obj);
 
         for manifold in manifolds.iter() {
             for cp in &manifold.point_cache {
@@ -90,8 +90,8 @@ impl SeqImpulseConstraintSolver {
         }
     }
 
-    fn setup_solver_bodies(&mut self, ball_obj: &SphereRigidBody, time_step: f32) {
-        self.solver_body.update(ball_obj, time_step);
+    fn setup_solver_bodies(&mut self, ball_obj: &SphereRigidBody) {
+        self.solver_body.update(ball_obj);
     }
 
     fn convert_contact_special(&mut self, body: &SphereRigidBody, time_step: f32) {
@@ -113,7 +113,7 @@ impl SeqImpulseConstraintSolver {
 
         let denom = {
             let vec = angular_component_a.cross(rel_pos1);
-            body.inverse_mass + normal_world_on_b.dot(vec)
+            body.inv_mass + normal_world_on_b.dot(vec)
         };
         let jac_diag_ab_inv = relaxation / denom;
 
@@ -187,7 +187,7 @@ impl SeqImpulseConstraintSolver {
 
         let denom = {
             let vec = angular_component_a.cross(rel_pos1);
-            body.inverse_mass + lateral_friction_dir_1.dot(vec)
+            body.inv_mass + lateral_friction_dir_1.dot(vec)
         };
         let jac_diag_ab_inv = relaxation / denom;
 

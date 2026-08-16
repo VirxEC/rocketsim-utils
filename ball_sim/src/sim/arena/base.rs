@@ -212,6 +212,19 @@ impl Arena {
     pub fn step_tick(&mut self) -> &[BallHitWorldEvent] {
         self.events.clear();
 
+        // NOTE: This needs to be called manually
+        // TODO: Make it not need to be called manually
+        self.bullet_world.clear_accum_forces();
+
+        // Limit velocities
+        {
+            let ball_rb = &mut self.bullet_world.ball_mut();
+            ball_rb.limit_vels(
+                self.config.mutators.ball_max_speed * UU_TO_BT,
+                consts::ball::MAX_ANG_SPEED,
+            );
+        }
+
         let ball_rb = &self.bullet_world.ball_mut();
         let should_sleep =
             ball_rb.lin_vel.length_squared() == 0.0 && ball_rb.ang_vel.length_squared() == 0.0;
@@ -232,8 +245,11 @@ impl Arena {
             let contact_point = manifold_point.pos_world_on_b * BT_TO_UU;
             let contact_normal = manifold_point.normal_world_on_b;
 
-            self.ball
-                .on_world_hit(contact_normal, self.config.game_mode);
+            self.ball.on_world_hit(
+                self.bullet_world.ball_mut(),
+                self.config.game_mode,
+                contact_normal,
+            );
 
             self.events.push(BallHitWorldEvent {
                 contact_point,
@@ -243,8 +259,7 @@ impl Arena {
 
         self.contact_tracker.clear_records();
 
-        self.ball
-            .finish_physics_tick(self.bullet_world.ball_mut(), &self.config.mutators);
+        self.ball.finish_physics_tick(self.bullet_world.ball_mut());
 
         if self.config.game_mode == GameMode::Dropshot {
             todo!("Dropshot tile state sync")

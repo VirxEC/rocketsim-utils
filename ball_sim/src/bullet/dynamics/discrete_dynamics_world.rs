@@ -2,13 +2,13 @@ use glam::Vec3A;
 
 use super::{
     constraint_solver::seq_impulse_constraint_solver::SeqImpulseConstraintSolver,
-    rigid_body::RigidBody,
+    rigid_body::RigidBody, sphere_rigid_body::SphereRigidBody,
 };
 use crate::{
     ArenaContactTracker,
     bullet::{
         collision::{broadphase::GridBroadphase, dispatch::collision_world::CollisionWorld},
-        dynamics::sphere_rigid_body::SphereRigidBody,
+        dynamics::sphere_rigid_body::Impulse,
     },
 };
 
@@ -16,6 +16,7 @@ use crate::{
 pub struct DiscreteDynamicsWorld {
     collision_world: CollisionWorld,
     solver: SeqImpulseConstraintSolver,
+    gravity: Vec3A,
 }
 
 impl DiscreteDynamicsWorld {
@@ -23,6 +24,7 @@ impl DiscreteDynamicsWorld {
         Self {
             collision_world: CollisionWorld::new(pair_cache, ball_obj),
             solver: SeqImpulseConstraintSolver::default(),
+            gravity: Vec3A::ZERO,
         }
     }
 
@@ -37,7 +39,7 @@ impl DiscreteDynamicsWorld {
     }
 
     pub fn set_gravity(&mut self, gravity: Vec3A) {
-        self.collision_world.ball_obj.set_gravity(gravity);
+        self.gravity = gravity;
     }
 
     #[inline]
@@ -46,8 +48,12 @@ impl DiscreteDynamicsWorld {
     }
 
     #[inline]
-    fn apply_gravity(&mut self) {
-        self.collision_world.ball_obj.apply_gravity();
+    fn apply_gravity(&mut self, time_step: f32) {
+        self.collision_world.ball_obj.add_impulse(
+            Impulse::Linear(self.gravity * time_step),
+            false,
+            true,
+        );
     }
 
     fn predict_unconstraint_motion(&mut self, time_step: f32) {
@@ -74,8 +80,8 @@ impl DiscreteDynamicsWorld {
     }
 
     #[inline]
-    const fn clear_forces(&mut self) {
-        self.collision_world.ball_obj.clear_forces();
+    pub const fn clear_accum_forces(&mut self) {
+        self.collision_world.ball_obj.clear_accum_vels();
     }
 
     fn internal_single_step_simulation(
@@ -97,9 +103,7 @@ impl DiscreteDynamicsWorld {
         time_step: f32,
         contact_added_callback: &mut ArenaContactTracker,
     ) {
-        self.apply_gravity();
+        self.apply_gravity(time_step);
         self.internal_single_step_simulation(time_step, contact_added_callback);
-
-        self.clear_forces();
     }
 }

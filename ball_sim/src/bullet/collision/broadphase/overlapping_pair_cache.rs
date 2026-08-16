@@ -24,7 +24,9 @@ impl Default for HashedOverlappingPairCache {
 
 impl HashedOverlappingPairCache {
     pub fn add_overlapping_pair(&mut self, proxy1_idx: usize) {
-        self.overlapping_pair_array.push(proxy1_idx);
+        if !self.overlapping_pair_array.contains(&proxy1_idx) {
+            self.overlapping_pair_array.push(proxy1_idx);
+        }
     }
 
     #[inline]

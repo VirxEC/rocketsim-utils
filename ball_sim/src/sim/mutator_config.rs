@@ -18,7 +18,6 @@ pub struct MutatorConfig {
     pub ball_drag: f32,
     pub ball_hit_extra_force_scale: f32,
     pub bump_force_scale: f32,
-    pub bump_requires_front_hit: bool,
     pub ball_radius: f32,
     /// Only used if the game mode has soccar goals (i.e. soccar, heatseeker, snowday)
     pub goal_base_threshold_y: f32,
@@ -44,7 +43,6 @@ impl MutatorConfig {
             ball_drag: consts::ball::DRAG,
             ball_hit_extra_force_scale: 1.,
             bump_force_scale: 1.,
-            bump_requires_front_hit: false, // No longer required in newer Rocket League versions
             ball_radius: consts::ball::get_radius(game_mode),
             goal_base_threshold_y: consts::goal::SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y,
         }

@@ -1,8 +1,8 @@
-use ahash::AHashMap;
 use ball_sim::{
     Arena as SimArena, BallState as SimBallState, DropshotInfo as SimDropshotInfo,
     GameMode as SimGameMode, HeatseekerInfo as SimHeatseekerInfo,
 };
+use rustc_hash::FxHashMap;
 
 fn to_vec3a(v: ffi::Vec3) -> glam::Vec3A {
     glam::Vec3A::new(v.x, v.y, v.z)
@@ -149,7 +149,7 @@ pub fn init_from_path(path: &str, silent: bool) -> bool {
 
 #[must_use]
 pub fn init_from_mem(mesh_files: Vec<ffi::MeshFile>, silent: bool) -> bool {
-    let mut mesh_map: AHashMap<SimGameMode, Vec<Vec<u8>>> = AHashMap::new();
+    let mut mesh_map: FxHashMap<SimGameMode, Vec<Vec<u8>>> = FxHashMap::default();
     for mesh in mesh_files {
         mesh_map
             .entry(to_game_mode(mesh.game_mode))
