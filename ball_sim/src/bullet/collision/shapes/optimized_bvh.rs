@@ -10,7 +10,7 @@ fn update_triangle_aabb(mut aabb: Aabb) -> Aabb {
     const MIN_AABB_DIMENSION: f32 = 0.002;
     const MIN_AABB_HALF_DIMENSION: f32 = MIN_AABB_DIMENSION / 2.0;
 
-    let diff = (aabb.max - aabb.min).cmplt(const { Vec3A::splat(MIN_AABB_DIMENSION) });
+    let diff = (aabb.max - aabb.min).cmplt(Vec3A::splat(MIN_AABB_DIMENSION));
 
     if diff.any() {
         let [x, y, z] = diff.into();
@@ -50,10 +50,5 @@ pub fn create_bvh(triangles: &TriangleMesh, aabb: Aabb) -> Tree {
         })
         .collect();
 
-    let num_leaf_nodes = leaf_nodes.len();
-
-    let mut bvh = Tree::new(aabb, num_leaf_nodes);
-    bvh.build_tree(&mut leaf_nodes, 0, num_leaf_nodes);
-
-    bvh
+    Tree::build(aabb, &mut leaf_nodes)
 }

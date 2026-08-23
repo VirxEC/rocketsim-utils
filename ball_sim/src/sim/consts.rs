@@ -182,3 +182,9 @@ pub mod dropshot {
     pub const BALL_LAUNCH_Z_VEL: f32 = 985.0;
     pub const BALL_LAUNCH_DELAY: f32 = 0.26;
 }
+
+pub mod quantize {
+    pub const POS_SCALE: f32 = 100.0;
+    pub const VEL_SCALE: f32 = 100.0;
+    pub const ANG_VEL_SCALE: f32 = 10000.0;
+}

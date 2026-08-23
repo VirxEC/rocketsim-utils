@@ -5,7 +5,7 @@ use crate::{
         collision::StaticPlaneShape,
         dynamics::{contact_constraint::resolve_single_bilateral, rigid_body::RigidBody},
     },
-    consts::{UU_TO_BT, bullet_vehicle},
+    consts::{BT_TO_UU, UU_TO_BT, bullet_vehicle, curves},
 };
 
 pub const NUM_WHEELS: usize = 4;
@@ -41,6 +41,8 @@ pub struct VehicleRL {
     pub lat_friction: Vec4,
     pub long_friction: Vec4,
     impulse: [Vec4; 3],
+    /// Whether any wheel raycast hit the world during this tick's update
+    pub had_world_contact: bool,
 }
 
 impl VehicleRL {
@@ -185,7 +187,100 @@ impl VehicleRL {
         self.axle_dir = vec_to_simd(axle_dirs);
     }
 
-    pub fn update_vehicle_first(&mut self, chassis: &RigidBody) {
+    /// Refresh friction curves against THIS tick's fresh contact before the
+    /// impulses are computed - consuming the previous grounded tick's values
+    /// left first-touchdown ticks with stale (full-strength) friction.
+    fn refresh_friction_curves(
+        &mut self,
+        chassis: &RigidBody,
+        handbrake_val: f32,
+        real_throttle: f32,
+    ) {
+        let chassis_pos = chassis.get_world_trans().translation;
+        let car_vel = chassis.lin_vel;
+        let car_ang_vel = chassis.ang_vel;
+
+        let [contact_point_x, contact_point_y, contact_point_z] = self.raycast_info.contact_point;
+        let [lat_dir_x, lat_dir_y, lat_dir_z] = self.axle_dir;
+
+        // The sim only raycasts against a flat static plane, so the contact
+        // normal is always world-up; the longitudinal direction is the
+        // horizontal component of `lat_dir x normal`.
+        let wheel_delta_x = contact_point_x - chassis_pos.x;
+        let wheel_delta_y = contact_point_y - chassis_pos.y;
+        let wheel_delta_z = contact_point_z - chassis_pos.z;
+
+        let avx = Vec4::splat(car_ang_vel.x);
+        let avy = Vec4::splat(car_ang_vel.y);
+        let avz = Vec4::splat(car_ang_vel.z);
+
+        let cross_x = avy * wheel_delta_z - avz * wheel_delta_y;
+        let cross_y = avz * wheel_delta_x - avx * wheel_delta_z;
+        let cross_z = avx * wheel_delta_y - avy * wheel_delta_x;
+
+        let cross_vec_x = (cross_x + car_vel.x) * BT_TO_UU;
+        let cross_vec_y = (cross_y + car_vel.y) * BT_TO_UU;
+        let cross_vec_z = (cross_z + car_vel.z) * BT_TO_UU;
+
+        let base_friction =
+            (cross_vec_x * lat_dir_x + cross_vec_y * lat_dir_y + cross_vec_z * lat_dir_z).abs();
+        let long_dot = (cross_vec_x * lat_dir_y - cross_vec_y * lat_dir_x).abs();
+
+        let mut friction_curve_input = base_friction / (long_dot + base_friction);
+        friction_curve_input = Vec4::select(
+            base_friction.cmpge(Vec4::splat(5.0)),
+            friction_curve_input,
+            Vec4::ZERO,
+        );
+
+        let mut lat_friction = [0.0; 4];
+        for i in 0..NUM_WHEELS {
+            lat_friction[i] = curves::LAT_FRICTION.get_output(friction_curve_input[i]);
+        }
+        let mut lat_friction = Vec4::from_array(lat_friction);
+        let mut long_friction = Vec4::ONE;
+
+        if handbrake_val != 0.0 {
+            let mut handbrake_lat_friction = [0.0; 4];
+            for i in 0..NUM_WHEELS {
+                handbrake_lat_friction[i] =
+                    curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input[i]);
+            }
+            lat_friction *=
+                1.0 + (Vec4::from_array(handbrake_lat_friction) - 1.0) * handbrake_val;
+
+            let mut handbrake_long_friction = [0.0; 4];
+            for i in 0..NUM_WHEELS {
+                handbrake_long_friction[i] =
+                    curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input[i]);
+            }
+            long_friction *=
+                1.0 + (Vec4::from_array(handbrake_long_friction) - 1.0) * handbrake_val;
+        }
+
+        if real_throttle == 0.0 {
+            // Contact is not sticky
+            let non_sticky_scale = curves::NON_STICKY_FRICTION_FACTOR.get_output(1.0);
+            lat_friction *= Vec4::splat(non_sticky_scale);
+            long_friction *= Vec4::splat(non_sticky_scale);
+        }
+
+        self.lat_friction = lat_friction;
+        self.long_friction = long_friction;
+    }
+
+    /// Runs the full bullet vehicle update for this tick:
+    /// wheel transforms, raycasts, friction curve refresh, friction impulses,
+    /// and suspension.
+    ///
+    /// Must be called before the physics integration step.
+    pub fn update(
+        &mut self,
+        chassis: &mut RigidBody,
+        time_step: f32,
+        handbrake_val: f32,
+        real_throttle: f32,
+    ) {
         self.update_wheel_trans(chassis);
 
         let targets = self.get_raycast_targets();
@@ -195,7 +290,18 @@ impl VehicleRL {
 
         self.apply_ray_casts(chassis);
 
+        self.refresh_friction_curves(chassis, handbrake_val, real_throttle);
+
         self.calc_friction_impulses(chassis, chassis.mass / 3.0);
+
+        self.update_suspension(chassis, time_step);
+
+        // note: all suspension MUST be updated before impulses are applied
+        self.apply_friction_impulses(chassis, time_step);
+
+        // The sim only raycasts against an infinite static plane, so any
+        // update implies world contact.
+        self.had_world_contact = true;
     }
 
     fn update_suspension(&self, cb: &mut RigidBody, delta_time: f32) {
@@ -234,10 +340,5 @@ impl VehicleRL {
 
         cb.ang_vel += cb.inv_inertia_tensor_world.x_axis * torque_x.element_sum()
             + cb.inv_inertia_tensor_world.y_axis * torque_y.element_sum();
-    }
-
-    pub fn update_vehicle_second(&self, cb: &mut RigidBody, step: f32) {
-        self.update_suspension(cb, step);
-        self.apply_friction_impulses(cb, step);
     }
 }

@@ -216,22 +216,19 @@ impl Arena {
         // TODO: Make it not need to be called manually
         self.bullet_world.clear_accum_forces();
 
-        // Limit velocities
+        // Limit velocities, then quantize physics values
         {
             let ball_rb = &mut self.bullet_world.ball_mut();
             ball_rb.limit_vels(
                 self.config.mutators.ball_max_speed * UU_TO_BT,
                 consts::ball::MAX_ANG_SPEED,
             );
+            crate::shared::quantize::quantize(ball_rb);
         }
 
-        let ball_rb = &self.bullet_world.ball_mut();
-        let should_sleep =
-            ball_rb.lin_vel.length_squared() == 0.0 && ball_rb.ang_vel.length_squared() == 0.0;
-        if should_sleep {
-            self.tick_count += 1;
-            return self.get_last_step_events();
-        }
+        // NOTE: no ball sleep-on-zero-velocity here - the game integrates
+        // gravity on an exactly-at-rest mid-air ball; sleeping it freezes
+        // freefall and breaks parity.
 
         self.ball
             .pre_tick_update(self.bullet_world.ball_mut(), self.config.game_mode);

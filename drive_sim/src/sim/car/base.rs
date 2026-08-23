@@ -1,4 +1,4 @@
-use glam::{Affine3A, Quat, Vec3A, Vec4};
+use glam::{Affine3A, Quat, Vec3A};
 
 use crate::{
     CarBodyConfig, CarControls, CarState, MutatorConfig,
@@ -22,6 +22,10 @@ use crate::{
 pub struct Car {
     pub bullet_vehicle: VehicleRL,
     pub state: CarState,
+    /// Wheel-world-contact from the END of the previous tick. The game gates
+    /// the sticky force on last tick's contact, so a car spawned on the
+    /// ground does not stick until its second tick.
+    sticky_gate_prev: bool,
 }
 
 impl Car {
@@ -67,6 +71,7 @@ impl Car {
                     boost: mutator_config.car_spawn_boost_amount,
                     ..Default::default()
                 },
+                sticky_gate_prev: false,
             },
             body,
         )
@@ -96,6 +101,7 @@ impl Car {
         rb: &mut RigidBody,
         gravity: Vec3A,
         forward_speed_uu: f32,
+        real_throttle: f32,
         tick_time: f32,
     ) {
         let handbrake_delta = if self.state.controls.handbrake {
@@ -106,11 +112,6 @@ impl Car {
         self.state.handbrake_val = (self.state.handbrake_val + handbrake_delta).clamp(0.0, 1.0);
 
         let mut real_brake = 0.0;
-        let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
-            1.0
-        } else {
-            self.state.controls.throttle
-        };
 
         let abs_forward_speed_uu = forward_speed_uu.abs();
         let mut engine_throttle = real_throttle;
@@ -135,7 +136,19 @@ impl Car {
             }
         }
 
-        let drive_speed_scale = curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
+        let drive_speed_scale = {
+            let mut scale = curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
+            let num_wheels_in_contact = self
+                .state
+                .wheels_with_contact
+                .iter()
+                .filter(|&&c| c)
+                .count();
+            if num_wheels_in_contact < 3 {
+                scale /= 4.0;
+            }
+            scale
+        };
         self.bullet_vehicle.engine_force = engine_throttle
             * const { drive_consts::THROTTLE_TORQUE_AMOUNT * UU_TO_BT }
             * drive_speed_scale;
@@ -155,76 +168,25 @@ impl Car {
         self.bullet_vehicle.steering_orn[0] = steering_orn;
         self.bullet_vehicle.steering_orn[1] = steering_orn;
 
-        let car_pos = rb.get_world_pos();
-        let car_vel = rb.lin_vel;
-        let car_ang_vel = rb.ang_vel;
+        // fresh raycast contact must not produce sticky force within its own tick
+        if self.sticky_gate_prev {
+            // The sim only raycasts against a flat static plane, so the
+            // upwards dir from the wheel contacts is always world-up.
+            const UPWARDS_DIR: Vec3A = Vec3A::Z;
 
-        let [hard_point_x, hard_point_y, hard_point_z] =
-            self.bullet_vehicle.raycast_info.hard_point;
-        let [lat_dir_x, lat_dir_y, lat_dir_z] = self.bullet_vehicle.axle_dir;
-
-        let wheel_delta_x = hard_point_x - car_pos.x;
-        let wheel_delta_y = hard_point_y - car_pos.y;
-        let wheel_delta_z = hard_point_z - car_pos.z;
-
-        let avx = Vec4::splat(car_ang_vel.x);
-        let avy = Vec4::splat(car_ang_vel.y);
-        let avz = Vec4::splat(car_ang_vel.z);
-
-        let cross_x = avy * wheel_delta_z - avz * wheel_delta_y;
-        let cross_y = avz * wheel_delta_x - avx * wheel_delta_z;
-        let cross_z = avx * wheel_delta_y - avy * wheel_delta_x;
-
-        let cross_vec_x = (cross_x + car_vel.x) * BT_TO_UU;
-        let cross_vec_y = (cross_y + car_vel.y) * BT_TO_UU;
-        let cross_vec_z = (cross_z + car_vel.z) * BT_TO_UU;
-
-        let base_friction =
-            (cross_vec_x * lat_dir_x + cross_vec_y * lat_dir_y + cross_vec_z * lat_dir_z).abs();
-        let long_dot = (cross_vec_x * lat_dir_y - cross_vec_y * lat_dir_x).abs();
-
-        let mut friction_curve_input = base_friction / (long_dot + base_friction);
-        friction_curve_input = Vec4::select(
-            base_friction.cmpge(Vec4::splat(5.0)),
-            friction_curve_input,
-            Vec4::ZERO,
-        );
-
-        let mut lat_friction = [0.0; 4];
-
-        for i in 0..NUM_WHEELS {
-            lat_friction[i] = curves::LAT_FRICTION.get_output(friction_curve_input[i]);
-        }
-
-        let mut lat_friction = Vec4::from_array(lat_friction);
-        let mut long_friction = Vec4::ONE;
-
-        if self.state.handbrake_val != 0.0 {
-            let handbrake_amount = self.state.handbrake_val;
-
-            let mut handbrake_lat_friction = [0.0; 4];
-            for i in 0..NUM_WHEELS {
-                handbrake_lat_friction[i] =
-                    curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input[i]);
-            }
-            lat_friction *=
-                1.0 + (Vec4::from_array(handbrake_lat_friction) - 1.0) * handbrake_amount;
-
-            let mut handbrake_long_friction = [0.0; 4];
-            for i in 0..NUM_WHEELS {
-                handbrake_long_friction[i] =
-                    curves::HANDBRAKE_LONG_FRICTION_FACTOR.get_output(friction_curve_input[i]);
+            let full_stick =
+                real_throttle != 0.0 || abs_forward_speed_uu > drive_consts::STOPPING_FORWARD_VEL;
+            let mut sticky_force_scale = 0.5;
+            if full_stick {
+                sticky_force_scale += 1.0 - UPWARDS_DIR.z.abs();
             }
 
-            long_friction *=
-                1.0 + (Vec4::from_array(handbrake_long_friction) - 1.0) * handbrake_amount;
+            rb.add_impulse(
+                Impulse::Linear(UPWARDS_DIR * sticky_force_scale * gravity.z * tick_time),
+                false,
+                true,
+            );
         }
-
-        self.bullet_vehicle.lat_friction = lat_friction;
-        self.bullet_vehicle.long_friction = long_friction;
-
-        let stick_force_scale = 0.5 * gravity;
-        rb.add_impulse(Impulse::Linear(stick_force_scale * tick_time), false, true);
     }
 
     fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig, tick_time: f32) {
@@ -273,10 +235,17 @@ impl Car {
         self.state.controls = self.state.controls.clamp();
         let forward_speed_uu = collision_world.collision_obj.get_forward_speed() * BT_TO_UU;
 
+        let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
+            1.0
+        } else {
+            self.state.controls.throttle
+        };
+
         self.update_wheels(
             &mut collision_world.collision_obj,
             mutator_config.gravity * UU_TO_BT,
             forward_speed_uu,
+            real_throttle,
             tick_time,
         );
 
@@ -285,19 +254,18 @@ impl Car {
             mutator_config,
             tick_time,
         );
-    }
 
-    /// Updates the wheels (wheel transforms, raycasts, suspension, and friction impulses)
-    /// after the physics step.
-    pub fn post_tick_update(
-        &mut self,
-        collision_world: &mut DiscreteDynamicsWorld,
-        tick_time: f32,
-    ) {
-        self.bullet_vehicle
-            .update_vehicle_first(&collision_world.collision_obj);
-        self.bullet_vehicle
-            .update_vehicle_second(&mut collision_world.collision_obj, tick_time);
+        // Updates the wheels (wheel transforms, raycasts, suspension, and
+        // friction impulses) BEFORE the physics integration step.
+        self.bullet_vehicle.update(
+            &mut collision_world.collision_obj,
+            tick_time,
+            self.state.handbrake_val,
+            real_throttle,
+        );
+        let in_contact = self.bullet_vehicle.had_world_contact;
+        self.state.wheels_with_contact = [in_contact; 4];
+        self.sticky_gate_prev = in_contact;
     }
 
     pub fn finish_physics_tick(&mut self, rb: &mut RigidBody) {

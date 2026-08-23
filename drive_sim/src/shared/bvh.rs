@@ -1,6 +1,6 @@
-use std::{iter::repeat_n, mem};
+use std::iter::repeat_n;
 
-use glam::Vec3A;
+use glam::{Vec3A, Vec4};
 
 use crate::shared::Aabb;
 
@@ -11,18 +11,25 @@ pub trait ProcessNode {
 #[derive(Debug, Default, Clone)]
 pub struct Tree {
     pub aabb: Aabb,
-    pub cur_node_idx: usize,
-    pub nodes: Box<[Node]>,
+    wide_nodes: Box<[WideNode]>,
+    leaves: Box<[WideLeaf]>,
 }
 
 impl Tree {
     const SAH_BINS: usize = 4;
+    const TRAVERSAL_STACK_SIZE: usize = 128;
 
-    pub fn new(aabb: Aabb, num_leaf_nodes: usize) -> Self {
+    pub fn build(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
+        let binary = BinaryTree::build(aabb, leaf_nodes);
+        let mut wide_nodes = Vec::new();
+        let mut leaves = Vec::with_capacity(leaf_nodes.len());
+        let max_wide_depth = binary.build_wide_node(0, &mut wide_nodes, &mut leaves);
+        assert!(max_wide_depth * 3 < Self::TRAVERSAL_STACK_SIZE);
+
         Self {
             aabb,
-            cur_node_idx: 0,
-            nodes: repeat_n(Node::DEFAULT, 2 * num_leaf_nodes).collect(),
+            wide_nodes: wide_nodes.into_boxed_slice(),
+            leaves: leaves.into_boxed_slice(),
         }
     }
 
@@ -145,12 +152,88 @@ impl Tree {
     }
 
     fn swap_leaf_nodes(leaf_nodes: &mut [Node], i: usize, split_idx: usize) {
+        use std::mem;
+
         debug_assert_ne!(i, split_idx);
         let [a, b] = unsafe { leaf_nodes.get_disjoint_unchecked_mut([split_idx, i]) };
         mem::swap(a, b);
     }
 
-    pub fn build_tree(&mut self, leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) {
+    #[allow(dead_code)] // Part of the upstream BVH4 API; unused by this crate's lib
+    pub fn check_overlap_with(&self, aabb: &Aabb) -> bool {
+        if !aabb.intersects(&self.aabb) {
+            return false;
+        }
+
+        let mut stack = [0usize; Self::TRAVERSAL_STACK_SIZE];
+        let mut stack_len = 1;
+        while stack_len != 0 {
+            stack_len -= 1;
+            let node = &self.wide_nodes[stack[stack_len]];
+            let mask = node.intersection_mask(aabb);
+            for lane in 0..node.child_count as usize {
+                if mask & (1 << lane) == 0 {
+                    continue;
+                }
+                if node.children[lane].leaf_idx().is_some() {
+                    return true;
+                }
+                stack[stack_len] = node.children[lane].branch_idx();
+                stack_len += 1;
+            }
+        }
+        false
+    }
+
+    pub fn report_aabb_overlapping_node<T: ProcessNode>(&self, node_callback: &mut T, aabb: &Aabb) {
+        if !aabb.intersects(&self.aabb) {
+            return;
+        }
+
+        let mut stack = [WideChild::default(); Self::TRAVERSAL_STACK_SIZE];
+        stack[0] = WideChild::branch(0);
+        let mut stack_len = 1;
+        while stack_len != 0 {
+            stack_len -= 1;
+            let work = stack[stack_len];
+            if let Some(storage_idx) = work.leaf_idx() {
+                std::hint::cold_path();
+                node_callback.process_node(self.leaves[storage_idx].leaf_idx);
+                continue;
+            }
+
+            let node = &self.wide_nodes[work.branch_idx()];
+            let mask = node.intersection_mask(aabb);
+            for lane in (0..node.child_count as usize).rev() {
+                if mask & (1 << lane) != 0 {
+                    std::hint::cold_path();
+                    stack[stack_len] = node.children[lane];
+                    stack_len += 1;
+                }
+            }
+        }
+    }
+}
+
+struct BinaryTree {
+    aabb: Aabb,
+    cur_node_idx: usize,
+    nodes: Box<[Node]>,
+}
+
+impl BinaryTree {
+    fn build(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
+        assert!(!leaf_nodes.is_empty());
+        let mut tree = Self {
+            aabb,
+            cur_node_idx: 0,
+            nodes: repeat_n(Node::DEFAULT, 2 * leaf_nodes.len()).collect(),
+        };
+        tree.build_subtree(leaf_nodes, 0, leaf_nodes.len());
+        tree
+    }
+
+    fn build_subtree(&mut self, leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) {
         let num_indices = end_idx - start_idx;
         let cur_idx = self.cur_node_idx;
 
@@ -162,8 +245,7 @@ impl Tree {
             return;
         }
 
-        let split_idx = Self::calc_sah_split(leaf_nodes, start_idx, end_idx);
-
+        let split_idx = Tree::calc_sah_split(leaf_nodes, start_idx, end_idx);
         let internal_node_idx = self.cur_node_idx;
 
         {
@@ -177,50 +259,77 @@ impl Tree {
         }
 
         self.cur_node_idx += 1;
+        self.build_subtree(leaf_nodes, start_idx, split_idx);
+        self.build_subtree(leaf_nodes, split_idx, end_idx);
 
-        self.build_tree(leaf_nodes, start_idx, split_idx);
-        self.build_tree(leaf_nodes, split_idx, end_idx);
-
-        let escape_idx = self.cur_node_idx - cur_idx;
-        self.nodes[internal_node_idx].node_type = BvhNodeType::Branch { escape_idx };
+        self.nodes[internal_node_idx].node_type = BvhNodeType::Branch {
+            escape_idx: self.cur_node_idx - cur_idx,
+        };
     }
 
-    fn walk_stackless_tree<T: ProcessNode>(
+    fn children(&self, node_idx: usize) -> [usize; 2] {
+        let left_idx = node_idx + 1;
+        let right_idx = match self.nodes[left_idx].node_type {
+            BvhNodeType::Leaf { .. } => left_idx + 1,
+            BvhNodeType::Branch { escape_idx } => left_idx + escape_idx,
+        };
+        [left_idx, right_idx]
+    }
+
+    fn build_wide_node(
         &self,
-        node_callback: &mut T,
-        aabb: &Aabb,
-        start_node_idx: usize,
-        end_node_idx: usize,
-    ) {
-        let mut cur_idx = start_node_idx;
-        while cur_idx < end_node_idx {
-            let root_node = &self.nodes[cur_idx];
-            let aabb_overlap = aabb.intersects(&root_node.aabb);
+        binary_root: usize,
+        wide_nodes: &mut Vec<WideNode>,
+        leaves: &mut Vec<WideLeaf>,
+    ) -> usize {
+        let wide_idx = wide_nodes.len();
+        wide_nodes.push(WideNode::default());
 
-            match root_node.node_type {
-                BvhNodeType::Leaf { leaf_idx } => {
-                    if aabb_overlap {
-                        std::hint::cold_path();
-                        node_callback.process_node(leaf_idx);
-                    }
+        let mut frontier = vec![binary_root];
+        while frontier.len() < 4 {
+            let Some((slot, _)) = frontier
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, &idx)| match self.nodes[idx].node_type {
+                    BvhNodeType::Leaf { .. } => None,
+                    BvhNodeType::Branch { escape_idx } => Some((slot, escape_idx)),
+                })
+                .max_by_key(|&(_, subtree_size)| subtree_size)
+            else {
+                break;
+            };
 
-                    cur_idx += 1;
-                }
-                BvhNodeType::Branch { escape_idx } => {
-                    cur_idx += if aabb_overlap {
-                        std::hint::cold_path();
-                        1
-                    } else {
-                        escape_idx
-                    };
-                }
-            }
+            let [left, right] = self.children(frontier[slot]);
+            frontier.splice(slot..=slot, [left, right]);
         }
-    }
 
-    #[inline]
-    pub fn report_aabb_overlapping_node<T: ProcessNode>(&self, node_callback: &mut T, aabb: &Aabb) {
-        self.walk_stackless_tree(node_callback, aabb, 0, self.cur_node_idx);
+        let mut wide = WideNode {
+            child_count: frontier.len() as u8,
+            ..Default::default()
+        };
+        let mut max_child_depth = 0;
+        for (lane, binary_idx) in frontier.into_iter().enumerate() {
+            let node = self.nodes[binary_idx];
+            wide.set_bounds(lane, node.aabb);
+            wide.children[lane] = match node.node_type {
+                BvhNodeType::Leaf { leaf_idx } => {
+                    let storage_idx = leaves.len();
+                    leaves.push(WideLeaf {
+                        bounds: node.aabb,
+                        leaf_idx,
+                    });
+                    WideChild::leaf(storage_idx)
+                }
+                BvhNodeType::Branch { .. } => {
+                    let child_idx = wide_nodes.len();
+                    max_child_depth =
+                        max_child_depth.max(self.build_wide_node(binary_idx, wide_nodes, leaves));
+                    WideChild::branch(child_idx)
+                }
+            };
+        }
+        wide_nodes[wide_idx] = wide;
+        max_child_depth + 1
     }
 }
 
@@ -241,4 +350,146 @@ impl Node {
         aabb: Aabb::ZERO,
         node_type: BvhNodeType::Leaf { leaf_idx: 0 },
     };
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WideLeaf {
+    #[expect(dead_code)] // Used by quad-ray traversal in full RocketSim
+    bounds: Aabb,
+    leaf_idx: usize,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct WideNode {
+    min_x: Vec4,
+    min_y: Vec4,
+    min_z: Vec4,
+    max_x: Vec4,
+    max_y: Vec4,
+    max_z: Vec4,
+    children: [WideChild; 4],
+    child_count: u8,
+}
+
+impl WideNode {
+    fn set_bounds(&mut self, lane: usize, aabb: Aabb) {
+        self.min_x[lane] = aabb.min.x;
+        self.min_y[lane] = aabb.min.y;
+        self.min_z[lane] = aabb.min.z;
+        self.max_x[lane] = aabb.max.x;
+        self.max_y[lane] = aabb.max.y;
+        self.max_z[lane] = aabb.max.z;
+    }
+
+    fn intersection_mask(&self, aabb: &Aabb) -> u32 {
+        let overlap = self.min_x.cmple(Vec4::splat(aabb.max.x))
+            & self.max_x.cmpge(Vec4::splat(aabb.min.x))
+            & self.min_y.cmple(Vec4::splat(aabb.max.y))
+            & self.max_y.cmpge(Vec4::splat(aabb.min.y))
+            & self.min_z.cmple(Vec4::splat(aabb.max.z))
+            & self.max_z.cmpge(Vec4::splat(aabb.min.z));
+        overlap.bitmask() & ((1 << self.child_count) - 1)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct WideChild(usize);
+
+impl WideChild {
+    const LEAF_BIT: usize = 1 << (usize::BITS - 1);
+
+    const fn leaf(storage_idx: usize) -> Self {
+        assert!(storage_idx < Self::LEAF_BIT);
+        Self(Self::LEAF_BIT | storage_idx)
+    }
+
+    const fn branch(branch_idx: usize) -> Self {
+        Self(branch_idx)
+    }
+
+    const fn leaf_idx(self) -> Option<usize> {
+        if self.0 & Self::LEAF_BIT != 0 {
+            Some(self.0 & !Self::LEAF_BIT)
+        } else {
+            None
+        }
+    }
+
+    const fn branch_idx(self) -> usize {
+        self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::Vec3A;
+
+    use super::{Aabb, BvhNodeType, Node, ProcessNode, Tree};
+
+    #[derive(Default)]
+    struct Collector(Vec<usize>);
+
+    impl ProcessNode for Collector {
+        fn process_node(&mut self, leaf_idx: usize) {
+            self.0.push(leaf_idx);
+        }
+    }
+
+    #[test]
+    fn wide_traversal_handles_single_leaf() {
+        let bounds = Aabb::new(Vec3A::ZERO, Vec3A::ONE);
+        let mut leaves = [Node {
+            aabb: bounds,
+            node_type: BvhNodeType::Leaf { leaf_idx: 7 },
+        }];
+        let tree = Tree::build(bounds, &mut leaves);
+
+        let mut actual = Collector::default();
+        tree.report_aabb_overlapping_node(&mut actual, &bounds);
+        assert_eq!(actual.0, [7]);
+        assert!(tree.check_overlap_with(&bounds));
+    }
+
+    #[test]
+    fn wide_traversal_matches_brute_force_in_binary_order() {
+        let mut leaves: Vec<_> = (0..257)
+            .map(|idx| {
+                let x = ((idx * 37) % 101) as f32 - 50.0;
+                let y = ((idx * 61) % 97) as f32 - 48.0;
+                let z = ((idx * 17) % 43) as f32 - 21.0;
+                let min = Vec3A::new(x, y, z);
+                Node {
+                    aabb: Aabb::new(min, min + Vec3A::splat(1.5)),
+                    node_type: BvhNodeType::Leaf { leaf_idx: idx },
+                }
+            })
+            .collect();
+        let tree_aabb = leaves
+            .iter()
+            .skip(1)
+            .fold(leaves[0].aabb, |bounds, leaf| bounds + leaf.aabb);
+        let tree = Tree::build(tree_aabb, &mut leaves);
+
+        for query_idx in 0..100 {
+            let center = Vec3A::new(
+                ((query_idx * 29) % 113) as f32 - 56.0,
+                ((query_idx * 47) % 109) as f32 - 54.0,
+                ((query_idx * 13) % 53) as f32 - 26.0,
+            );
+            let query = Aabb::new(center - 8.0, center + 8.0);
+            let expected: Vec<_> = leaves
+                .iter()
+                .filter_map(|node| match node.node_type {
+                    BvhNodeType::Leaf { leaf_idx } if query.intersects(&node.aabb) => {
+                        Some(leaf_idx)
+                    }
+                    _ => None,
+                })
+                .collect();
+            let mut actual = Collector::default();
+            tree.report_aabb_overlapping_node(&mut actual, &query);
+            assert_eq!(actual.0, expected);
+            assert_eq!(tree.check_overlap_with(&query), !expected.is_empty());
+        }
+    }
 }

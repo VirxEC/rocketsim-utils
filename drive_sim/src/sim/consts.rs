@@ -80,6 +80,8 @@ pub mod curves {
     pub const DRIVE_SPEED_TORQUE_FACTOR: LinearPieceCurve<3> =
         LinearPieceCurve::new([(0., 1.0), (1400., 0.1), (1410., 0.0)]);
     pub const LAT_FRICTION: LinearPieceCurve<2> = LinearPieceCurve::new([(0., 1.0), (1., 0.2)]);
+    pub const NON_STICKY_FRICTION_FACTOR: LinearPieceCurve<3> =
+        LinearPieceCurve::new([(0., 0.1), (0.7075, 0.5), (1., 1.0)]);
     pub const HANDBRAKE_LAT_FRICTION_FACTOR: LinearPieceCurve<1> =
         LinearPieceCurve::new([(0., 0.1)]);
     pub const HANDBRAKE_LONG_FRICTION_FACTOR: LinearPieceCurve<2> =
@@ -184,4 +186,10 @@ pub mod boost_pads {
             }
         }
     }
+}
+
+pub mod quantize {
+    pub const POS_SCALE: f32 = 100.0;
+    pub const VEL_SCALE: f32 = 100.0;
+    pub const ANG_VEL_SCALE: f32 = 10000.0;
 }

@@ -84,6 +84,7 @@ impl Arena {
             consts::car::MAX_SPEED * consts::UU_TO_BT,
             consts::car::MAX_ANG_SPEED,
         );
+        crate::bullet::dynamics::quantize::quantize(&mut self.bullet_world.collision_obj);
 
         self.car
             .pre_tick_update(&mut self.bullet_world, &self.mutator_config, self.tick_time);
@@ -92,9 +93,6 @@ impl Arena {
             self.mutator_config.gravity * consts::UU_TO_BT,
             self.tick_time,
         );
-
-        self.car
-            .post_tick_update(&mut self.bullet_world, self.tick_time);
 
         self.car
             .finish_physics_tick(&mut self.bullet_world.collision_obj);

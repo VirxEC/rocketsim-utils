@@ -69,11 +69,6 @@ impl Car {
         let dir_yaw = up_dir;
         let dir_roll = -forward_dir;
 
-        if self.state.is_flipping {
-            self.state.is_flipping =
-                self.state.has_flipped && self.state.flip_time < car_consts::flip::TORQUE_TIME;
-        }
-
         let mut do_air_control = false;
         if self.state.is_flipping {
             if self.state.flip_rel_torque == Vec3A::ZERO {
@@ -91,15 +86,39 @@ impl Car {
                 }
 
                 rel_dodge_torque.y *= pitch_scale;
-                let dodge_torque = rel_dodge_torque
-                    * Vec3A::new(car_consts::flip::TORQUE_X, car_consts::flip::TORQUE_Y, 0.0)
-                    * self.tick_time;
+                let dodge_torque =
+                    rel_dodge_torque * car_consts::flip::TORQUE * self.tick_time;
 
                 self.body.add_impulse(
                     Impulse::Angular(self.body.world_trans.matrix3 * dodge_torque),
                     false,
                     true,
                 );
+
+                let ang_vel = self.body.ang_vel;
+                let damp_pitch = dir_pitch.dot(ang_vel) * car_consts::air_control::DAMPING.x;
+                let damp_yaw = dir_yaw.dot(ang_vel) * car_consts::air_control::DAMPING.y;
+                let damp_roll = dir_roll.dot(ang_vel) * car_consts::air_control::DAMPING.z;
+                let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
+                self.body.add_impulse(
+                    Impulse::Angular(
+                        damping * car_consts::air_control::TORQUE_APPLY_SCALE * self.tick_time,
+                    ),
+                    false,
+                    true,
+                );
+                let proj_x = self.body.ang_vel.x + self.body.accum_ang_vel.x;
+                if proj_x > car_consts::flip::SPIN_CAP_X {
+                    self.body.accum_ang_vel.x -= proj_x - car_consts::flip::SPIN_CAP_X;
+                } else if proj_x < -car_consts::flip::SPIN_CAP_X {
+                    self.body.accum_ang_vel.x -= proj_x + car_consts::flip::SPIN_CAP_X;
+                }
+                let proj_y = self.body.ang_vel.y + self.body.accum_ang_vel.y;
+                if proj_y > car_consts::flip::SPIN_CAP_Y {
+                    self.body.accum_ang_vel.y -= proj_y - car_consts::flip::SPIN_CAP_Y;
+                } else if proj_y < -car_consts::flip::SPIN_CAP_Y {
+                    self.body.accum_ang_vel.y -= proj_y + car_consts::flip::SPIN_CAP_Y;
+                }
             }
         } else {
             do_air_control = true;
@@ -151,10 +170,14 @@ impl Car {
                 .add_impulse(Impulse::Angular(rb_torque), false, true);
         }
 
-        if self.state.controls.throttle != 0.0 {
-            // TODO: Fix air-throttle not respecting boost
+        let throttle_scale = if self.state.controls.boost {
+            1.0
+        } else {
+            self.state.controls.throttle
+        };
+        if throttle_scale != 0.0 {
             let throttle_force = forward_dir
-                * self.state.controls.throttle
+                * throttle_scale
                 * car_consts::drive::THROTTLE_AIR_ACCEL
                 * UU_TO_BT
                 * self.tick_time;
@@ -266,11 +289,13 @@ impl Car {
         }
 
         if self.state.is_flipping {
-            self.state.flip_time += self.tick_time;
-            if self.state.flip_time <= car_consts::flip::TORQUE_TIME
-                && self.state.flip_time >= car_consts::flip::Z_DAMP_START
-                && (self.body.lin_vel.z < 0.0
-                    || self.state.flip_time < car_consts::flip::Z_DAMP_END)
+            let flip_time_pre = self.state.flip_time;
+            self.state.is_flipping =
+                self.state.has_flipped && flip_time_pre < car_consts::flip::TORQUE_TIME;
+            self.state.flip_time = flip_time_pre + self.tick_time;
+            if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
+                .contains(&flip_time_pre)
+                && (self.body.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
             {
                 self.body.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
             }
@@ -322,12 +347,13 @@ impl Car {
         let forward_speed_uu = self.body.get_forward_speed() * BT_TO_UU;
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
 
-        self.update_air_torque();
         self.update_double_jump_or_flip(mutator_config, jump_pressed, forward_speed_uu);
+
+        // NOTE: Must run after `update_double_jump_or_flip` so a dodge's
+        // first torque impulse is applied on the same tick as the input
+        self.update_air_torque();
         self.update_boost(mutator_config);
 
-        self.body
-            .limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
     }
 
     pub(crate) fn post_tick_update(&mut self) {
@@ -343,6 +369,13 @@ impl Car {
     }
 
     pub fn step_tick(&mut self, mutator_config: &MutatorConfig) {
+        // Limit velocities, then quantize physics values.
+        // NOTE: Must happen before the car updates so torque calculations see
+        // the limited values, matching RocketSim's tick ordering.
+        self.body
+            .limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
+        crate::bullet::quantize::quantize(&mut self.body);
+
         self.pre_tick_update(mutator_config);
 
         self.body.step_simulation(self.tick_time);

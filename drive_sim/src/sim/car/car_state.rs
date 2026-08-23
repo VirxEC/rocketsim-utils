@@ -20,6 +20,10 @@ pub struct CarState {
     pub boosting_time: f32,
     /// This is a state variable due to the rise/fall rate of handbrake inputs
     pub handbrake_val: f32,
+    /// Whether each of the 4 wheels had contact at the end of the last tick
+    ///
+    /// First two are front
+    pub wheels_with_contact: [bool; 4],
 }
 
 impl Default for CarState {
@@ -42,6 +46,7 @@ impl CarState {
         is_boosting: false,
         boosting_time: 0.0,
         handbrake_val: 0.0,
+        wheels_with_contact: [false; 4],
     };
 }
 
