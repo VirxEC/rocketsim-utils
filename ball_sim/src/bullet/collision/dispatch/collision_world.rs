@@ -78,6 +78,10 @@ impl CollisionWorld {
         &mut self,
         contact_added_callback: &mut ArenaContactTracker,
     ) {
+        // Fresh active set each tick; persistent manifolds carry
+        // contacts across ticks. (The old solver drains `manifolds`.)
+        self.dispatcher1.active_manifolds.clear();
+
         self.update_aabbs();
 
         self.broadphase_pair_cache.calculate_overlapping_pairs();

@@ -136,19 +136,7 @@ impl Car {
             }
         }
 
-        let drive_speed_scale = {
-            let mut scale = curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
-            let num_wheels_in_contact = self
-                .state
-                .wheels_with_contact
-                .iter()
-                .filter(|&&c| c)
-                .count();
-            if num_wheels_in_contact < 3 {
-                scale /= 4.0;
-            }
-            scale
-        };
+        let drive_speed_scale = curves::DRIVE_SPEED_TORQUE_FACTOR.get_output(abs_forward_speed_uu);
         self.bullet_vehicle.engine_force = engine_throttle
             * const { drive_consts::THROTTLE_TORQUE_AMOUNT * UU_TO_BT }
             * drive_speed_scale;
@@ -235,11 +223,10 @@ impl Car {
         self.state.controls = self.state.controls.clamp();
         let forward_speed_uu = collision_world.collision_obj.get_forward_speed() * BT_TO_UU;
 
-        let real_throttle = if self.state.controls.boost && self.state.boost > 0.0 {
-            1.0
-        } else {
-            self.state.controls.throttle
-        };
+        // NOTE: RocketSim scales engine force by /4 with <3 wheels in contact
+        // in the vehicle layer. drive_sim always has 4 wheels down on its flat
+        // plane, so no scaling applies here.
+        let real_throttle = self.state.controls.throttle;
 
         self.update_wheels(
             &mut collision_world.collision_obj,

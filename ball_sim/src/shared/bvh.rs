@@ -16,13 +16,25 @@ pub struct Tree {
 }
 
 impl Tree {
+    // SAH construction is only exercised by the unit tests below;
+    // runtime meshes use `build_bullet`.
+    #[allow(dead_code)]
     const SAH_BINS: usize = 4;
     const TRAVERSAL_STACK_SIZE: usize = 128;
 
+    #[allow(dead_code)]
     pub fn build(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
-        let binary = BinaryTree::build(aabb, leaf_nodes);
+        Self::from_binary(BinaryTree::build(aabb, leaf_nodes), leaf_nodes.len())
+    }
+
+    pub(crate) fn build_bullet(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
+        Self::from_binary(BinaryTree::build_bullet(aabb, leaf_nodes), leaf_nodes.len())
+    }
+
+    fn from_binary(binary: BinaryTree, num_leaves: usize) -> Self {
+        let aabb = binary.aabb;
         let mut wide_nodes = Vec::new();
-        let mut leaves = Vec::with_capacity(leaf_nodes.len());
+        let mut leaves = Vec::with_capacity(num_leaves);
         let max_wide_depth = binary.build_wide_node(0, &mut wide_nodes, &mut leaves);
         assert!(max_wide_depth * 3 < Self::TRAVERSAL_STACK_SIZE);
 
@@ -33,6 +45,7 @@ impl Tree {
         }
     }
 
+    #[allow(dead_code)]
     #[allow(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
@@ -151,6 +164,51 @@ impl Tree {
         mid
     }
 
+    fn calc_bullet_split(leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) -> usize {
+        let count = end_idx - start_idx;
+        debug_assert!(count >= 2);
+
+        let mut mean = Vec3A::ZERO;
+        for leaf in &leaf_nodes[start_idx..end_idx] {
+            mean += leaf.aabb.center();
+        }
+        mean *= 1.0 / count as f32;
+
+        let mut variance = Vec3A::ZERO;
+        for leaf in &leaf_nodes[start_idx..end_idx] {
+            let difference = leaf.aabb.center() - mean;
+            variance += difference * difference;
+        }
+        variance *= 1.0 / (count as f32 - 1.0);
+
+        let axis = if variance.x < variance.y {
+            if variance.y < variance.z { 2 } else { 1 }
+        } else if variance.x < variance.z {
+            2
+        } else {
+            0
+        };
+        let split_value = mean[axis];
+
+        let mut split_idx = start_idx;
+        for i in start_idx..end_idx {
+            if leaf_nodes[i].aabb.center()[axis] > split_value {
+                if i != split_idx {
+                    Self::swap_leaf_nodes(leaf_nodes, i, split_idx);
+                }
+                split_idx += 1;
+            }
+        }
+
+        let balanced_range = count / 3;
+        if split_idx <= start_idx + balanced_range || split_idx >= end_idx - 1 - balanced_range {
+            split_idx = start_idx + (count >> 1);
+        }
+
+        debug_assert!(split_idx != start_idx && split_idx != end_idx);
+        split_idx
+    }
+
     fn swap_leaf_nodes(leaf_nodes: &mut [Node], i: usize, split_idx: usize) {
         use std::mem;
 
@@ -189,14 +247,16 @@ impl Tree {
             return;
         }
 
-        let mut stack = [WideChild::default(); Self::TRAVERSAL_STACK_SIZE];
-        stack[0] = WideChild::branch(0);
+        // Only the pushed prefix is read, so leave the rest uninitialized.
+        use std::mem::MaybeUninit;
+        let mut stack = [MaybeUninit::<WideChild>::uninit(); Self::TRAVERSAL_STACK_SIZE];
+        stack[0].write(WideChild::branch(0));
         let mut stack_len = 1;
         while stack_len != 0 {
             stack_len -= 1;
-            let work = stack[stack_len];
+            // SAFETY: only indices below `stack_len + 1` are read, each written before bump.
+            let work = unsafe { stack[stack_len].assume_init() };
             if let Some(storage_idx) = work.leaf_idx() {
-                std::hint::cold_path();
                 node_callback.process_node(self.leaves[storage_idx].leaf_idx);
                 continue;
             }
@@ -206,7 +266,8 @@ impl Tree {
             for lane in (0..node.child_count as usize).rev() {
                 if mask & (1 << lane) != 0 {
                     std::hint::cold_path();
-                    stack[stack_len] = node.children[lane];
+                    debug_assert!(stack_len < Self::TRAVERSAL_STACK_SIZE);
+                    stack[stack_len].write(node.children[lane]);
                     stack_len += 1;
                 }
             }
@@ -221,18 +282,37 @@ struct BinaryTree {
 }
 
 impl BinaryTree {
+    // SAH construction is only exercised by the unit tests below.
+    #[allow(dead_code)]
     fn build(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
         assert!(!leaf_nodes.is_empty());
-        let mut tree = Self {
-            aabb,
-            cur_node_idx: 0,
-            nodes: repeat_n(Node::DEFAULT, 2 * leaf_nodes.len()).collect(),
-        };
-        tree.build_subtree(leaf_nodes, 0, leaf_nodes.len());
+        let mut tree = Self::new(aabb, leaf_nodes.len());
+        tree.build_subtree(leaf_nodes, 0, leaf_nodes.len(), Tree::calc_sah_split);
         tree
     }
 
-    fn build_subtree(&mut self, leaf_nodes: &mut [Node], start_idx: usize, end_idx: usize) {
+    fn build_bullet(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
+        assert!(!leaf_nodes.is_empty());
+        let mut tree = Self::new(aabb, leaf_nodes.len());
+        tree.build_subtree(leaf_nodes, 0, leaf_nodes.len(), Tree::calc_bullet_split);
+        tree
+    }
+
+    fn new(aabb: Aabb, num_leaves: usize) -> Self {
+        Self {
+            aabb,
+            cur_node_idx: 0,
+            nodes: repeat_n(Node::DEFAULT, 2 * num_leaves).collect(),
+        }
+    }
+
+    fn build_subtree(
+        &mut self,
+        leaf_nodes: &mut [Node],
+        start_idx: usize,
+        end_idx: usize,
+        split_fn: fn(&mut [Node], usize, usize) -> usize,
+    ) {
         let num_indices = end_idx - start_idx;
         let cur_idx = self.cur_node_idx;
 
@@ -244,7 +324,7 @@ impl BinaryTree {
             return;
         }
 
-        let split_idx = Tree::calc_sah_split(leaf_nodes, start_idx, end_idx);
+        let split_idx = split_fn(leaf_nodes, start_idx, end_idx);
         let internal_node_idx = self.cur_node_idx;
 
         {
@@ -258,8 +338,8 @@ impl BinaryTree {
         }
 
         self.cur_node_idx += 1;
-        self.build_subtree(leaf_nodes, start_idx, split_idx);
-        self.build_subtree(leaf_nodes, split_idx, end_idx);
+        self.build_subtree(leaf_nodes, start_idx, split_idx, split_fn);
+        self.build_subtree(leaf_nodes, split_idx, end_idx, split_fn);
 
         self.nodes[internal_node_idx].node_type = BvhNodeType::Branch {
             escape_idx: self.cur_node_idx - cur_idx,
@@ -302,10 +382,7 @@ impl BinaryTree {
             frontier.splice(slot..=slot, [left, right]);
         }
 
-        let mut wide = WideNode {
-            child_count: frontier.len() as u8,
-            ..Default::default()
-        };
+        let mut wide = WideNode::with_child_count(frontier.len() as u8);
         let mut max_child_depth = 0;
         for (lane, binary_idx) in frontier.into_iter().enumerate() {
             let node = self.nodes[binary_idx];
@@ -363,9 +440,19 @@ struct WideNode {
     max_z: Vec4,
     children: [WideChild; 4],
     child_count: u8,
+    // Valid-child mask: (1 << child_count) - 1.
+    valid_mask: u32,
 }
 
 impl WideNode {
+    fn with_child_count(child_count: u8) -> Self {
+        debug_assert!((1..=4).contains(&child_count));
+        Self {
+            child_count,
+            valid_mask: (1u32 << child_count) - 1,
+            ..Default::default()
+        }
+    }
     fn set_bounds(&mut self, lane: usize, aabb: Aabb) {
         self.min_x[lane] = aabb.min.x;
         self.min_y[lane] = aabb.min.y;
@@ -382,7 +469,7 @@ impl WideNode {
             & self.max_y.cmpge(Vec4::splat(aabb.min.y))
             & self.min_z.cmple(Vec4::splat(aabb.max.z))
             & self.max_z.cmpge(Vec4::splat(aabb.min.z));
-        overlap.bitmask() & ((1 << self.child_count) - 1)
+        overlap.bitmask() & self.valid_mask
     }
 }
 

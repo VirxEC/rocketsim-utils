@@ -97,6 +97,26 @@ impl Arena {
         );
 
         for mesh in collision_meshes {
+            // Detect the Hoops net mesh. Upstream uses this to disable car
+            // collision; ball-only sims have no cars or filter groups, so
+            // the detection is kept for parity but has no effect.
+            let _is_hoops_net = if game_mode == GameMode::Hoops {
+                // Detect net mesh and disable car collision
+                mesh.get_mesh_interface().get_total_num_faces() == 798
+            } else {
+                false
+            };
+
+            // NOTE: upstream builds goal components in local coordinates
+            // and carries the recovered per-component translation
+            // (`CollisionMeshFile::component_translation`) on the rigid
+            // body. ball_sim's shared meshes are world-space, and the
+            // broadphase proxy AABBs plus triangle queries ignore
+            // static-body translations, so applying a translation here
+            // would move goal collision out of place. Keep the
+            // world-space mesh at identity until init carries local meshes
+            // (see `make_bullet_mesh_local`) and the broadphase goes
+            // translation-aware.
             Self::add_static_collision_shape(
                 bullet_world,
                 CollisionShapes::TriangleMesh(mesh.clone()),
@@ -224,6 +244,9 @@ impl Arena {
                 consts::ball::MAX_ANG_SPEED,
             );
             crate::shared::quantize::quantize(ball_rb);
+            // Sync the cached state after rigid-body limits.
+            self.ball.state.phys.vel = ball_rb.lin_vel * BT_TO_UU;
+            self.ball.state.phys.ang_vel = ball_rb.ang_vel;
         }
 
         // NOTE: no ball sleep-on-zero-velocity here - the game integrates

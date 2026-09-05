@@ -54,6 +54,11 @@ pub struct SphereRigidBody {
     pub accum_ang_vel: Vec3A,
     pub linear_damping: f32,
     pub inv_mass_splat: Vec3A,
+    /// Cached shape breaking threshold (`angular_disc * 0.02`).
+    /// Shapes never change after construction, so cache the disc math here
+    /// instead of recomputing it per manifold creation.
+    /// Read it via [`get_contact_breaking_threshold`](Self::get_contact_breaking_threshold).
+    contact_breaking_threshold: f32,
 }
 
 impl SphereRigidBody {
@@ -87,6 +92,9 @@ impl SphereRigidBody {
             accum_ang_vel: Vec3A::ZERO,
             linear_damping,
             inv_mass_splat: Vec3A::splat(inv_mass),
+            // Shapes are immutable after construction, so the threshold
+            // never changes for this body. Cache it once.
+            contact_breaking_threshold: info.collision_shape.get_contact_breaking_threshold(),
         }
     }
 
@@ -100,6 +108,13 @@ impl SphereRigidBody {
 
     pub const fn get_collision_shape(&self) -> &SphereShape {
         &self.shape
+    }
+
+    /// Cached breaking threshold for this body's shape (see field docs).
+    /// Shapes are immutable, so this never changes after construction.
+    #[inline]
+    pub const fn get_contact_breaking_threshold(&self) -> f32 {
+        self.contact_breaking_threshold
     }
 
     pub fn set_lin_vel(&mut self, lin_vel: Vec3A) {

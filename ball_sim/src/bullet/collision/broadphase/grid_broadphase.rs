@@ -3,7 +3,7 @@ use std::iter::repeat_with;
 use arrayvec::ArrayVec;
 use glam::{IVec3, USizeVec3, Vec3A};
 
-use super::overlapping_pair_cache::HashedOverlappingPairCache;
+use super::overlapping_pair_cache::OverlappingPairCache;
 use crate::{
     ArenaContactTracker,
     bullet::{
@@ -82,14 +82,20 @@ impl CellGrid {
             CollisionShapes::TriangleMesh(mesh) => Some(mesh.as_ref()),
             CollisionShapes::StaticPlane(_) => None,
         };
+        // Mesh BVHs hold local triangles. Goal components carry a body
+        // translation, so test world grid cells in mesh-local space.
+        // (Translation-only bodies: local = world - translation.)
+        let mesh_trans = col_obj.get_world_trans();
 
         for i in min.x..=max.x {
             for j in min.y..=max.y {
                 for k in min.z..=max.z {
                     if let Some(mesh_interface) = tri_mesh_shape {
                         let cell_min = self.get_cell_min_pos(USizeVec3::new(i, j, k));
-                        let cell_aabb =
-                            Aabb::new(cell_min, cell_min + Vec3A::splat(self.cell_size));
+                        let cell_aabb = Aabb::new(
+                            cell_min - mesh_trans,
+                            cell_min + Vec3A::splat(self.cell_size) - mesh_trans,
+                        );
 
                         if !mesh_interface.check_overlap_with(&cell_aabb) {
                             continue;
@@ -129,7 +135,7 @@ impl CellGrid {
 pub struct GridBroadphase {
     cell_grid: CellGrid,
     handles: Vec<GridBroadphaseProxy>,
-    pair_cache: HashedOverlappingPairCache,
+    pair_cache: OverlappingPairCache,
 }
 
 impl GridBroadphase {
@@ -153,7 +159,7 @@ impl GridBroadphase {
                 cells,
             },
             handles: Vec::with_capacity(32),
-            pair_cache: HashedOverlappingPairCache::default(),
+            pair_cache: OverlappingPairCache::default(),
         }
     }
 

@@ -10,11 +10,11 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct HashedOverlappingPairCache {
+pub struct OverlappingPairCache {
     overlapping_pair_array: ArrayVec<usize, 4>,
 }
 
-impl Default for HashedOverlappingPairCache {
+impl Default for OverlappingPairCache {
     fn default() -> Self {
         Self {
             overlapping_pair_array: ArrayVec::new(),
@@ -22,7 +22,7 @@ impl Default for HashedOverlappingPairCache {
     }
 }
 
-impl HashedOverlappingPairCache {
+impl OverlappingPairCache {
     pub fn add_overlapping_pair(&mut self, proxy1_idx: usize) {
         if !self.overlapping_pair_array.contains(&proxy1_idx) {
             self.overlapping_pair_array.push(proxy1_idx);

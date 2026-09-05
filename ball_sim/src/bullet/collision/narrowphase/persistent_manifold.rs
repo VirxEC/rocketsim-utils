@@ -13,18 +13,54 @@ use crate::{
 pub const CONTACT_BREAKING_THRESHOLD: f32 = 0.02;
 pub const MANIFOLD_CACHE_SIZE: usize = 4;
 
+/// Order-independent lookup key for a body pair.
+/// Packs `min` in the high bits and `max` in the low bits so the
+/// dispatcher matches pairs with one `u64` compare instead of two
+/// `min`/`max` calls per cached manifold.
+#[inline]
+pub fn pair_key(body_a_idx: usize, body_b_idx: usize) -> u64 {
+    let pair_min = body_a_idx.min(body_b_idx) as u64;
+    let pair_max = body_a_idx.max(body_b_idx) as u64;
+    (pair_min << 32) | pair_max
+}
+
 #[derive(Clone, Debug)]
 pub struct PersistentManifold {
     pub point_cache: ArrayVec<ManifoldPoint, MANIFOLD_CACHE_SIZE>,
+    pub(crate) most_recently_evicted_point: Option<ManifoldPoint>,
+    pub body0_idx: usize,
+    pub body1_idx: usize,
+    pub pair_key: u64,
     pub contact_breaking_threshold: f32,
+    pub contact_processing_threshold: f32,
 }
 
 impl PersistentManifold {
     pub fn new(contact_breaking_threshold: f32) -> Self {
         Self {
             contact_breaking_threshold,
+            // Upstream takes the min of the bodies' thresholds; ball_sim
+            // bodies carry none, and upstream defaults to `f32::MAX`.
+            contact_processing_threshold: f32::MAX,
             point_cache: ArrayVec::new(),
+            most_recently_evicted_point: None,
+            // Stamped by `CollisionDispatcher::insert_persistent_manifold`;
+            // `usize::MAX`/`u64::MAX` marks an unstamped manifold.
+            // (Upstream builds these from the body pair directly, but
+            // ball_sim bodies carry no pair indices, so the dispatcher
+            // assigns them at insert time.)
+            body0_idx: usize::MAX,
+            body1_idx: usize::MAX,
+            pair_key: u64::MAX,
         }
+    }
+
+    /// Cached breaking threshold for this manifold's pair.
+    /// (Upstream caches this per body; ball_sim shapes expose no such
+    /// API, so the threshold is captured once at manifold creation.)
+    #[inline]
+    pub const fn get_contact_breaking_threshold(&self) -> f32 {
+        self.contact_breaking_threshold
     }
 
     const fn calculate_combined_friction(body0: &SphereRigidBody, body1: &RigidBody) -> f32 {
@@ -125,13 +161,47 @@ impl PersistentManifold {
             ),
         };
 
-        res.max_position()
+        // Bullet's closestAxis4: first index of the maximum component wins ties.
+        let mut biggest_area = 0;
+        let mut max_area = res.x;
+        if res.y > max_area {
+            biggest_area = 1;
+            max_area = res.y;
+        }
+        if res.z > max_area {
+            biggest_area = 2;
+            max_area = res.z;
+        }
+        if res.w > max_area {
+            biggest_area = 3;
+        }
+
+        biggest_area
+    }
+
+    fn get_cache_entry(&self, new_contact: &ManifoldPoint) -> Option<usize> {
+        let threshold_sq = self.contact_breaking_threshold * self.contact_breaking_threshold;
+        let mut shortest_dist = threshold_sq;
+        let mut nearest_point: Option<usize> = None;
+        for (index, contact) in self.point_cache.iter().enumerate() {
+            let distance_sq = (contact.local_point_a - new_contact.local_point_a).length_squared();
+            if distance_sq < shortest_dist {
+                shortest_dist = distance_sq;
+                nearest_point = Some(index);
+            }
+        }
+        nearest_point
+    }
+
+    fn replace_contact_point(&mut self, index: usize, contact: ManifoldPoint) {
+        self.point_cache[index] = contact;
     }
 
     fn add_manifold_point(&mut self, contact: ManifoldPoint) -> usize {
         let num_points = self.point_cache.len();
         if num_points == MANIFOLD_CACHE_SIZE {
             let idx = self.sort_cached_points(&contact);
+            self.most_recently_evicted_point = Some(self.point_cache[idx]);
             self.point_cache[idx] = contact;
             idx
         } else {
@@ -170,11 +240,33 @@ impl PersistentManifold {
 
         new_pt.lateral_friction_dir_1 = plane_space_1(new_pt.normal_world_on_b);
 
-        let insert_idx = self.add_manifold_point(new_pt);
+        let insert_idx = self.add_contact_without_callback(new_pt);
 
         contact_added_callback.callback(&mut self.point_cache[insert_idx], body1, idx);
     }
 
+    fn add_contact_without_callback(&mut self, contact: ManifoldPoint) -> usize {
+        if let Some(insert_idx) = self.get_cache_entry(&contact) {
+            self.replace_contact_point(insert_idx, contact);
+            insert_idx
+        } else {
+            self.add_manifold_point(contact)
+        }
+    }
+
+    pub(crate) fn merge_contact_points(&mut self, other: &Self) {
+        // Borrow the fresh manifold: points are `Copy`, so iterating by
+        // reference moves the same values in the same order without
+        // memmoving the whole donor struct (`ArrayVec` + evicted point).
+        for contact in other.point_cache.iter() {
+            self.add_contact_without_callback(*contact);
+        }
+    }
+
+    /// Re-project carried points and cull separated ones.
+    /// Refreshing an empty cache is a no-op (returns early with no
+    /// observable change), so hot-path callers skip the call when
+    /// `point_cache` is empty.
     pub fn refresh_contact_points(&mut self, body0: &SphereRigidBody, body1: &RigidBody) {
         if self.point_cache.is_empty() {
             return;
@@ -195,10 +287,10 @@ impl PersistentManifold {
             self.contact_breaking_threshold * self.contact_breaking_threshold;
 
         for i in (0..self.point_cache.len()).rev() {
-            let point = &self.point_cache[i];
+            let point = self.point_cache[i];
             if point.distance_1 > self.contact_breaking_threshold {
                 // contact becomes invalid when signed distance exceeds margin (projected on contact normal direction)
-                self.point_cache.remove(i);
+                self.point_cache.swap_remove(i);
                 continue;
             }
 
@@ -207,7 +299,7 @@ impl PersistentManifold {
             let distance_2d = projected_difference.dot(projected_difference);
             if distance_2d > contact_breaking_threshold_sq {
                 // contact also becomes invalid when relative movement orthogonal to normal exceeds margin
-                self.point_cache.remove(i);
+                self.point_cache.swap_remove(i);
             }
         }
     }

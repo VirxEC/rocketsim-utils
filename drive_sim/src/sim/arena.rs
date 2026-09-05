@@ -85,6 +85,10 @@ impl Arena {
             consts::car::MAX_ANG_SPEED,
         );
         crate::bullet::dynamics::quantize::quantize(&mut self.bullet_world.collision_obj);
+        // Sync the cached state after rigid-body limits, matching RocketSim's
+        // tick ordering.
+        self.car.state.phys.vel = self.bullet_world.collision_obj.lin_vel * consts::BT_TO_UU;
+        self.car.state.phys.ang_vel = self.bullet_world.collision_obj.ang_vel;
 
         self.car
             .pre_tick_update(&mut self.bullet_world, &self.mutator_config, self.tick_time);

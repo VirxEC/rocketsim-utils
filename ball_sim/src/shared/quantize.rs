@@ -21,7 +21,7 @@ enum VecQuantizeMode {
 #[must_use]
 fn quantize_vec_ue3(vec: Vec3A, scale: f32, quantize_mode: VecQuantizeMode) -> Vec3A {
     match quantize_mode {
-        VecQuantizeMode::Position => (vec * scale).round() / scale,
+        VecQuantizeMode::Position => (vec * scale + 0.5).floor() / scale,
         VecQuantizeMode::Velocity => {
             let inv_scale = 1.0 / scale;
             let mut rounded = Vec3A::ZERO;

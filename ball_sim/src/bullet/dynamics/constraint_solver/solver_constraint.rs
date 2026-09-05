@@ -1,7 +1,6 @@
 use glam::Vec3A;
 
 use super::solver_body::SolverBody;
-use crate::bullet::dynamics::constraint_solver::contact_solver_info;
 
 fn bullet_dot(vec0: Vec3A, vec1: Vec3A) -> f32 {
     let result = vec0 * vec1;
@@ -25,11 +24,7 @@ pub struct SolverConstraint {
 
 impl SolverConstraint {
     pub fn restitution_curve(rel_vel: f32, restitution: f32) -> f32 {
-        if rel_vel.abs() < contact_solver_info::RESTITUTION_VELOCITY_THRESHOLD {
-            0.0
-        } else {
-            restitution * -rel_vel
-        }
+        (restitution * -rel_vel).max(0.0)
     }
 
     pub fn resolve_single_constraint_row_generic(&mut self, body_a: &mut SolverBody) -> f32 {

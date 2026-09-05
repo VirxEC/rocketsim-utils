@@ -14,12 +14,14 @@ pub fn process_collision(
     plane_obj: &RigidBody,
     plane_shape: &StaticPlaneShape,
     contact_added_callback: &mut ArenaContactTracker,
-) -> Option<PersistentManifold> {
+    out: &mut Option<PersistentManifold>,
+) {
+    debug_assert!(out.is_none());
     let convex_trans = convex_obj.get_world_trans();
     let convex_shape = convex_obj.get_collision_shape();
     let convex_aabb = convex_shape.get_aabb(convex_trans);
     if !convex_aabb.intersects(&plane_shape.aabb_cache) {
-        return None;
+        return;
     }
 
     let plane_normal = plane_shape.get_plane_normal();
@@ -33,7 +35,7 @@ pub fn process_collision(
 
     let contact_breaking_threshold = convex_shape.get_contact_breaking_threshold();
     if distance >= contact_breaking_threshold {
-        return None;
+        return;
     }
 
     let mut manifold = PersistentManifold::new(contact_breaking_threshold);
@@ -53,5 +55,5 @@ pub fn process_collision(
     );
 
     manifold.refresh_contact_points(convex_obj, plane_obj);
-    Some(manifold)
+    *out = Some(manifold);
 }

@@ -66,9 +66,13 @@ impl DiscreteDynamicsWorld {
 
     #[inline]
     fn solve_constraints(&mut self, time_step: f32) {
+        // Disjoint dispatcher fields: the solver reads the persistent
+        // manifolds for this tick's active pair indices.
+        let dispatcher = &mut self.collision_world.dispatcher1;
         self.solver.solve_group(
             &mut self.collision_world.ball_obj,
-            &mut self.collision_world.dispatcher1.manifolds,
+            &mut dispatcher.persistent_manifolds,
+            &mut dispatcher.active_manifolds,
             time_step,
         );
     }

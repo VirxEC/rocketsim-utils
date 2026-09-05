@@ -144,9 +144,9 @@ impl VehicleRL {
 
         let suspension_length = (hard_z - contact_z) - self.wheel_radius;
 
-        let min_suspension_len = self.suspension_rest_length_1 - Vec4::splat(SUSPENSION_TRAVEL);
+        // Full suspension compression is allowed: only the extension is clamped.
         let max_suspension_len = self.suspension_rest_length_1 + Vec4::splat(SUSPENSION_TRAVEL);
-        self.suspension_length = suspension_length.clamp(min_suspension_len, max_suspension_len);
+        self.suspension_length = suspension_length.min(max_suspension_len);
 
         let chassis_pos = chassis.get_world_trans().translation;
         let rel_x = self.raycast_info.contact_point[0] - chassis_pos.x;
@@ -200,15 +200,13 @@ impl VehicleRL {
         let car_vel = chassis.lin_vel;
         let car_ang_vel = chassis.ang_vel;
 
-        let [contact_point_x, contact_point_y, contact_point_z] = self.raycast_info.contact_point;
         let [lat_dir_x, lat_dir_y, lat_dir_z] = self.axle_dir;
 
-        // The sim only raycasts against a flat static plane, so the contact
-        // normal is always world-up; the longitudinal direction is the
-        // horizontal component of `lat_dir x normal`.
-        let wheel_delta_x = contact_point_x - chassis_pos.x;
-        let wheel_delta_y = contact_point_y - chassis_pos.y;
-        let wheel_delta_z = contact_point_z - chassis_pos.z;
+        // Friction-curve velocity is measured at the hard point (wheel mount),
+        // not the contact point.
+        let wheel_delta_x = self.raycast_info.hard_point[0] - chassis_pos.x;
+        let wheel_delta_y = self.raycast_info.hard_point[1] - chassis_pos.y;
+        let wheel_delta_z = self.raycast_info.hard_point[2] - chassis_pos.z;
 
         let avx = Vec4::splat(car_ang_vel.x);
         let avy = Vec4::splat(car_ang_vel.y);
@@ -246,8 +244,7 @@ impl VehicleRL {
                 handbrake_lat_friction[i] =
                     curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input[i]);
             }
-            lat_friction *=
-                1.0 + (Vec4::from_array(handbrake_lat_friction) - 1.0) * handbrake_val;
+            lat_friction *= 1.0 + (Vec4::from_array(handbrake_lat_friction) - 1.0) * handbrake_val;
 
             let mut handbrake_long_friction = [0.0; 4];
             for i in 0..NUM_WHEELS {

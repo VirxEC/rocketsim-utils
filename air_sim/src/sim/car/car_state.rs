@@ -29,6 +29,10 @@ pub struct CarState {
     pub flip_time: f32,
     /// True during a flip (not an auto-flip, and not after a flip)
     pub is_flipping: bool,
+    /// True while the car is auto-flipping (e.g. after landing upside-down)
+    ///
+    /// Unused in air_sim (cars never auto-flip here), kept for RocketSim parity.
+    pub is_auto_flipping: bool,
     /// True during a jump
     pub is_jumping: bool,
     /// Total time spent in the air
@@ -72,6 +76,7 @@ impl CarState {
         jump_time: 0.0,
         flip_time: 0.0,
         is_flipping: false,
+        is_auto_flipping: false,
         is_jumping: false,
         air_time: 0.0,
         air_time_since_jump: 0.0,
