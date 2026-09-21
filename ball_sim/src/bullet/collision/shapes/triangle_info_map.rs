@@ -40,8 +40,6 @@ impl TriangleInfoMap {
     pub const PLANAR_EPSILON: f32 = 0.0001;
     pub const EQUAL_VERTEX_THRESHOLD: f32 = 0.0001 * 0.0001;
     pub const EDGE_DISTANCE_THRESHOLD: f32 = 0.1;
-    pub const EDGE_DISTANCE_THRESHOLD_SQ: f32 =
-        Self::EDGE_DISTANCE_THRESHOLD * Self::EDGE_DISTANCE_THRESHOLD;
     pub const MAX_EDGE_ANGLE_THRESHOLD: f32 = TAU;
 
     pub fn new(map_size: usize) -> Self {

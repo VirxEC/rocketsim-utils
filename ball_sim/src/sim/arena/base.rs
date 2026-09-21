@@ -96,31 +96,11 @@ impl Arena {
             "No arena meshes found for the game mode {game_mode:?}"
         );
 
-        for mesh in collision_meshes {
-            // Detect the Hoops net mesh. Upstream uses this to disable car
-            // collision; ball-only sims have no cars or filter groups, so
-            // the detection is kept for parity but has no effect.
-            let _is_hoops_net = if game_mode == GameMode::Hoops {
-                // Detect net mesh and disable car collision
-                mesh.get_mesh_interface().get_total_num_faces() == 798
-            } else {
-                false
-            };
-
-            // NOTE: upstream builds goal components in local coordinates
-            // and carries the recovered per-component translation
-            // (`CollisionMeshFile::component_translation`) on the rigid
-            // body. ball_sim's shared meshes are world-space, and the
-            // broadphase proxy AABBs plus triangle queries ignore
-            // static-body translations, so applying a translation here
-            // would move goal collision out of place. Keep the
-            // world-space mesh at identity until init carries local meshes
-            // (see `make_bullet_mesh_local`) and the broadphase goes
-            // translation-aware.
+        for entry in collision_meshes {
             Self::add_static_collision_shape(
                 bullet_world,
-                CollisionShapes::TriangleMesh(mesh.clone()),
-                Vec3A::ZERO,
+                CollisionShapes::TriangleMesh(entry.shape.clone()),
+                entry.translation,
             );
         }
 
@@ -167,12 +147,11 @@ impl Arena {
                 );
 
                 add_plane(
-                    Vec3A::new(0.0, arena_aabb.min.z, arena_aabb.center().z),
+                    Vec3A::new(0.0, arena_aabb.max.y, arena_aabb.center().z),
                     Vec3A::NEG_Y,
                 );
             }
             GameMode::Dropshot => {
-                // Add tiles
                 todo!()
             }
             _ => {}
@@ -249,10 +228,6 @@ impl Arena {
             self.ball.state.phys.ang_vel = ball_rb.ang_vel;
         }
 
-        // NOTE: no ball sleep-on-zero-velocity here - the game integrates
-        // gravity on an exactly-at-rest mid-air ball; sleeping it freezes
-        // freefall and breaks parity.
-
         self.ball
             .pre_tick_update(self.bullet_world.ball_mut(), self.config.game_mode);
 
@@ -295,7 +270,6 @@ impl Arena {
     pub const fn tick_count(&self) -> u64 {
         self.tick_count
     }
-
     #[inline]
     #[must_use]
     pub const fn game_mode(&self) -> GameMode {

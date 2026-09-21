@@ -37,8 +37,11 @@ fn to_ds_info(info: ffi::DropshotInfo) -> SimDropshotInfo {
         charge_level: info.charge_level,
         accumulated_hit_force: info.accumulated_hit_force,
         y_target_dir: info.y_target_dir,
-        has_damaged: info.has_damaged,
-        last_damage_tick: info.last_damage_tick,
+        last_damage_tick: if info.last_damage_tick_present {
+            Some(info.last_damage_tick)
+        } else {
+            None
+        },
     }
 }
 
@@ -47,8 +50,8 @@ fn from_ds_info(info: SimDropshotInfo) -> ffi::DropshotInfo {
         charge_level: info.charge_level,
         accumulated_hit_force: info.accumulated_hit_force,
         y_target_dir: info.y_target_dir,
-        has_damaged: info.has_damaged,
-        last_damage_tick: info.last_damage_tick,
+        last_damage_tick_present: info.last_damage_tick.is_some(),
+        last_damage_tick: info.last_damage_tick.unwrap_or(0),
     }
 }
 
@@ -64,7 +67,7 @@ fn to_game_mode(game_mode: ffi::GameMode) -> SimGameMode {
 }
 
 #[cxx::bridge]
-mod ffi {
+pub mod ffi {
     #[derive(Clone, Copy, Debug)]
     pub struct Vec3 {
         pub x: f32,
@@ -81,10 +84,10 @@ mod ffi {
 
     #[derive(Clone, Copy, Debug)]
     pub struct DropshotInfo {
-        pub charge_level: i32,
+        pub charge_level: u8,
         pub accumulated_hit_force: f32,
         pub y_target_dir: i8,
-        pub has_damaged: bool,
+        pub last_damage_tick_present: bool,
         pub last_damage_tick: u64,
     }
 
@@ -95,8 +98,6 @@ mod ffi {
         pub ang_vel: Vec3,
         pub hs_info: HeatseekerInfo,
         pub ds_info: DropshotInfo,
-        pub last_extra_hit_tick_present: bool,
-        pub last_extra_hit_tick: u64,
         pub tick_count_since_kickoff: u64,
     }
 
@@ -173,8 +174,6 @@ pub fn ball_state_default() -> ffi::BallState {
         ang_vel: from_vec3a(state.phys.ang_vel),
         hs_info: from_hs_info(state.hs_info),
         ds_info: from_ds_info(state.ds_info),
-        last_extra_hit_tick_present: state.last_extra_hit_tick.is_some(),
-        last_extra_hit_tick: state.last_extra_hit_tick.unwrap_or(0),
         tick_count_since_kickoff: state.tick_count_since_kickoff,
     }
 }
@@ -196,11 +195,6 @@ impl Arena {
         sim_state.phys.ang_vel = to_vec3a(state.ang_vel);
         sim_state.hs_info = to_hs_info(state.hs_info);
         sim_state.ds_info = to_ds_info(state.ds_info);
-        sim_state.last_extra_hit_tick = if state.last_extra_hit_tick_present {
-            Some(state.last_extra_hit_tick)
-        } else {
-            None
-        };
         sim_state.tick_count_since_kickoff = state.tick_count_since_kickoff;
 
         self.inner.set_ball_state(sim_state);
@@ -215,8 +209,6 @@ impl Arena {
             ang_vel: from_vec3a(state.phys.ang_vel),
             hs_info: from_hs_info(state.hs_info),
             ds_info: from_ds_info(state.ds_info),
-            last_extra_hit_tick_present: state.last_extra_hit_tick.is_some(),
-            last_extra_hit_tick: state.last_extra_hit_tick.unwrap_or(0),
             tick_count_since_kickoff: state.tick_count_since_kickoff,
         }
     }

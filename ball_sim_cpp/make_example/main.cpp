@@ -28,11 +28,9 @@ int main() {
   state.ds_info.charge_level = 2;
   state.ds_info.accumulated_hit_force = 50.0f;
   state.ds_info.y_target_dir = 1;
-  state.ds_info.has_damaged = false;
+  state.ds_info.last_damage_tick_present = false;
   state.ds_info.last_damage_tick = 0;
 
-  state.last_extra_hit_tick_present = true;
-  state.last_extra_hit_tick = 42;
   state.tick_count_since_kickoff = 5;
 
   arena->set_ball_state(state);
@@ -53,19 +51,17 @@ int main() {
             << "\n";
   std::cout << "hs_info.time_since_hit: " << out.hs_info.time_since_hit << "\n";
 
-  std::cout << "ds_info.charge_level: " << out.ds_info.charge_level << "\n";
+  std::cout << "ds_info.charge_level: "
+            << static_cast<int>(out.ds_info.charge_level) << "\n";
   std::cout << "ds_info.accumulated_hit_force: "
             << out.ds_info.accumulated_hit_force << "\n";
   std::cout << "ds_info.y_target_dir: "
             << static_cast<int>(out.ds_info.y_target_dir) << "\n";
-  std::cout << "ds_info.has_damaged: "
-            << (out.ds_info.has_damaged ? "true" : "false") << "\n";
+  std::cout << "ds_info.last_damage_tick_present: "
+            << (out.ds_info.last_damage_tick_present ? "true" : "false") << "\n";
   std::cout << "ds_info.last_damage_tick: " << out.ds_info.last_damage_tick
             << "\n";
 
-  std::cout << "last_extra_hit_tick_present: "
-            << (out.last_extra_hit_tick_present ? "true" : "false") << "\n";
-  std::cout << "last_extra_hit_tick: " << out.last_extra_hit_tick << "\n";
   std::cout << "tick_count_since_kickoff: " << out.tick_count_since_kickoff
             << "\n";
 

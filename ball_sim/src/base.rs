@@ -19,11 +19,18 @@ use crate::{
         },
     },
 };
+use glam::Vec3A;
 
 static HAS_INITIALIZED_LOCK: OnceLock<()> = OnceLock::new();
 
-pub static ARENA_COLLISION_SHAPES: RwLock<
-    Option<FxHashMap<GameMode, Vec<Arc<BvhTriangleMeshShape>>>>,
+#[derive(Clone)]
+pub(crate) struct ArenaCollisionShape {
+    pub shape: Arc<BvhTriangleMeshShape>,
+    pub translation: Vec3A,
+}
+
+pub(crate) static ARENA_COLLISION_SHAPES: RwLock<
+    Option<FxHashMap<GameMode, Vec<ArenaCollisionShape>>>,
 > = RwLock::new(None);
 
 pub fn is_initialized() -> bool {
@@ -144,9 +151,13 @@ where
 
             *hash_count += 1;
 
-            let tri_mesh = mesh_file.make_bullet_mesh();
+            let translation = mesh_file.component_translation();
+            let tri_mesh = mesh_file.make_bullet_mesh_local();
             let bvt_mesh = BvhTriangleMeshShape::new(tri_mesh);
-            meshes.push(Arc::new(bvt_mesh));
+            meshes.push(ArenaCollisionShape {
+                shape: Arc::new(bvt_mesh),
+                translation,
+            });
         }
 
         arena_collision_shapes.insert(game_mode, meshes);

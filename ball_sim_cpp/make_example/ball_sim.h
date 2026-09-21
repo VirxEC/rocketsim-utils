@@ -927,10 +927,10 @@ struct HeatseekerInfo final {
 #ifndef CXXBRIDGE1_STRUCT_DropshotInfo
 #define CXXBRIDGE1_STRUCT_DropshotInfo
 struct DropshotInfo final {
-  ::std::int32_t charge_level CXX_DEFAULT_VALUE(0);
+  ::std::uint8_t charge_level CXX_DEFAULT_VALUE(0);
   float accumulated_hit_force CXX_DEFAULT_VALUE(0);
   ::std::int8_t y_target_dir CXX_DEFAULT_VALUE(0);
-  bool has_damaged CXX_DEFAULT_VALUE(false);
+  bool last_damage_tick_present CXX_DEFAULT_VALUE(false);
   ::std::uint64_t last_damage_tick CXX_DEFAULT_VALUE(0);
 
   using IsRelocatable = ::std::true_type;
@@ -945,8 +945,6 @@ struct BallState final {
   ::Vec3 ang_vel;
   ::HeatseekerInfo hs_info;
   ::DropshotInfo ds_info;
-  bool last_extra_hit_tick_present CXX_DEFAULT_VALUE(false);
-  ::std::uint64_t last_extra_hit_tick CXX_DEFAULT_VALUE(0);
   ::std::uint64_t tick_count_since_kickoff CXX_DEFAULT_VALUE(0);
 
   using IsRelocatable = ::std::true_type;

@@ -33,14 +33,12 @@ pub struct DropshotInfo {
     /// 1 = damages r=1 -> 1 tile
     /// 2 = damages r=2 -> 7 tiles
     /// 3 = damages r=3 -> 19 tiles
-    pub charge_level: i32,
+    pub charge_level: u8,
     /// Resets when a tile is damaged
     pub accumulated_hit_force: f32,
     /// Which side of the field the ball can damage (0=none, -1=blue, 1=orange)
     pub y_target_dir: i8,
-    pub has_damaged: bool,
-    /// Only valid if `has_damaged`
-    pub last_damage_tick: u64,
+    pub last_damage_tick: Option<u64>,
 }
 
 impl Default for DropshotInfo {
@@ -54,8 +52,7 @@ impl DropshotInfo {
         charge_level: 1,
         accumulated_hit_force: 0.,
         y_target_dir: 0,
-        has_damaged: false,
-        last_damage_tick: 0,
+        last_damage_tick: None,
     };
 }
 
@@ -64,9 +61,6 @@ pub struct BallState {
     pub phys: PhysState,
     pub hs_info: HeatseekerInfo,
     pub ds_info: DropshotInfo,
-
-    /// Used for preventing repeated extra impulse updates
-    pub last_extra_hit_tick: Option<u64>,
     pub tick_count_since_kickoff: u64,
 }
 
@@ -85,7 +79,6 @@ impl BallState {
         },
         hs_info: HeatseekerInfo::DEFAULT,
         ds_info: DropshotInfo::DEFAULT,
-        last_extra_hit_tick: None,
         tick_count_since_kickoff: 0,
     };
 }

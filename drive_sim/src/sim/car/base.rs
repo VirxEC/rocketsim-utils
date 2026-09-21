@@ -12,7 +12,7 @@ use crate::{
         linear_math::QuatExt,
     },
     consts::{
-        self, BT_TO_UU, UU_TO_BT, bullet_vehicle as vehicle_consts,
+        BT_TO_UU, UU_TO_BT, bullet_vehicle as vehicle_consts,
         car::{self as car_consts, drive as drive_consts},
         curves,
     },
@@ -39,7 +39,7 @@ impl Car {
 
         for i in 0..NUM_WHEELS {
             let front = i < 2;
-            let left = i % 2 != 0;
+            let left = i % 2 == 0;
 
             let wheel_config = if front {
                 &config.front_wheels
@@ -178,29 +178,49 @@ impl Car {
     }
 
     fn update_boost(&mut self, rb: &mut RigidBody, mutator_config: &MutatorConfig, tick_time: f32) {
-        self.state.is_boosting = if self.state.boost > 0.0 {
-            self.state.controls.boost
-                || (self.state.is_boosting
-                    && self.state.boosting_time < car_consts::boost::MIN_TIME)
-        } else {
-            false
-        };
+        let accel = mutator_config.boost_accel_ground;
 
         if self.state.is_boosting {
+            let cost = mutator_config.boost_used_per_second * tick_time;
+            self.state.boost = (self.state.boost - cost).max(0.0);
+            let depleted = self.state.boost == 0.0;
+            let latch_expired = !self.state.controls.boost
+                && self.state.boosting_time >= car_consts::boost::MIN_TIME;
+            if depleted || latch_expired {
+                self.state.is_boosting = false;
+                self.state.boosting_time = 0.0;
+                self.state.time_since_boosted += tick_time;
+
+                if mutator_config.recharge_boost_enabled
+                    && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
+                {
+                    self.state.boost += mutator_config.recharge_boost_per_second * tick_time;
+                }
+            } else {
+                self.state.is_boosting = true;
+                self.state.boosting_time += tick_time;
+                self.state.time_since_boosted = 0.0;
+
+                rb.add_impulse(
+                    Impulse::Linear(
+                        self.state.get_forward_dir() * (accel * UU_TO_BT) * tick_time,
+                    ),
+                    false,
+                    true,
+                );
+            }
+        } else if self.state.controls.boost && self.state.boost > 0.0 {
+            self.state.is_boosting = true;
             self.state.boosting_time += tick_time;
             self.state.time_since_boosted = 0.0;
-            self.state.boost -= mutator_config.boost_used_per_second * tick_time;
 
             rb.add_impulse(
-                Impulse::Linear(
-                    self.state.get_forward_dir()
-                        * (consts::car::boost::ACCEL_GROUND * UU_TO_BT)
-                        * tick_time,
-                ),
+                Impulse::Linear(self.state.get_forward_dir() * (accel * UU_TO_BT) * tick_time),
                 false,
                 true,
             );
         } else {
+            self.state.is_boosting = false;
             self.state.boosting_time = 0.0;
             self.state.time_since_boosted += tick_time;
 
@@ -242,13 +262,17 @@ impl Car {
             tick_time,
         );
 
-        // Updates the wheels (wheel transforms, raycasts, suspension, and
-        // friction impulses) BEFORE the physics integration step.
+        let real_throttle_vehicle =
+            if self.state.controls.boost && self.state.boost > 0.0 {
+                1.0
+            } else {
+                real_throttle
+            };
         self.bullet_vehicle.update(
             &mut collision_world.collision_obj,
             tick_time,
             self.state.handbrake_val,
-            real_throttle,
+            real_throttle_vehicle,
         );
         let in_contact = self.bullet_vehicle.had_world_contact;
         self.state.wheels_with_contact = [in_contact; 4];

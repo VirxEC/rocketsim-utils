@@ -40,7 +40,9 @@ impl CollisionWorld {
 
     pub fn add_collision_obj(&mut self, mut obj: RigidBody) -> usize {
         let idx = self.collision_objs.len();
-        let mut aabb = obj.get_collision_shape().get_aabb();
+        let mut aabb = obj
+            .get_collision_shape()
+            .get_world_aabb(obj.get_world_trans());
 
         aabb.min -= Self::CBT;
         aabb.max += Self::CBT;

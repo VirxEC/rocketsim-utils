@@ -26,11 +26,12 @@ pub mod car {
 
     pub mod boost {
         pub const MAX: f32 = 100.0;
-        pub const USED_PER_SECOND: f32 = MAX / 3.0;
+        /// Boost is consumed at 0.333 * 100 per second - not MAX / 3.
+        pub const USED_PER_SECOND: f32 = 33.3;
         /// Minimum time we can be boosting for
         pub const MIN_TIME: f32 = 0.1;
-        /// uu/s for vel (airborne)
-        pub const ACCEL_AIR: f32 = 3175.0 / 3.0;
+        /// uu/s for vel (airborne, paired with ground)
+        pub const ACCEL_AIR: f32 = 2975.0 / 3.0;
         pub const SPAWN_AMOUNT: f32 = MAX / 3.0;
         /// Amount of boost recharged per second when recharging
         pub const RECHARGE_PER_SECOND: f32 = 10.0;
@@ -76,8 +77,6 @@ pub mod car {
         /// X: Left/Right
         /// Y: Forward/Backward
         pub const TORQUE: Vec3A = Vec3A::new(260.0, 224.0, 0.0);
-        pub const SPIN_CAP_X: f32 = 7.4396;
-        pub const SPIN_CAP_Y: f32 = 7.2348;
         pub const FORWARD_IMPULSE_MAX_SPEED_SCALE: f32 = 1.0;
         pub const SIDE_IMPULSE_MAX_SPEED_SCALE: f32 = 1.9;
         pub const BACKWARD_IMPULSE_MAX_SPEED_SCALE: f32 = 2.5;

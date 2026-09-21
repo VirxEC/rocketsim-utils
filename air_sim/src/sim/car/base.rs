@@ -60,7 +60,7 @@ impl Car {
         self.state = *state;
     }
 
-    fn update_air_torque(&mut self) {
+    fn update_air_torque(&mut self, prev_is_flipping: bool, prev_flip_time: f32) {
         let forward_dir = self.state.get_forward_dir();
         let right_dir = self.state.get_right_dir();
         let up_dir = self.state.get_up_dir();
@@ -69,10 +69,6 @@ impl Car {
         let dir_yaw = up_dir;
         let dir_roll = -forward_dir;
 
-        // NOTE: air_sim cars are always airborne (0 wheels in contact), so the
-        // dodge torque always applies while flipping and air control always
-        // runs. This matches RocketSim's `allow_dodge = contacts < 3` /
-        // `allow_air = contacts == 0` gating (air_sim never auto-flips).
         if self.state.is_flipping && self.state.flip_rel_torque != Vec3A::ZERO {
             let mut rel_dodge_torque = self.state.flip_rel_torque;
 
@@ -94,20 +90,14 @@ impl Car {
             );
         }
 
-        // Air control always runs: air_sim never auto-flips.
         {
             let mut pitch_torque_scale = 1.0;
             let torque = if self.state.controls.pitch != 0.0
                 || self.state.controls.yaw != 0.0
                 || self.state.controls.roll != 0.0
             {
-                if self.state.is_flipping
-                    || self.state.has_flipped
-                        && self.state.flip_time
-                            < const {
-                                car_consts::flip::TORQUE_TIME
-                                    + car_consts::flip::PITCHLOCK_EXTRA_TIME
-                            }
+                if prev_is_flipping
+                    || self.state.has_flipped && prev_flip_time < car_consts::flip::PITCHLOCK_EXTRA_TIME
                 {
                     pitch_torque_scale = 0.0;
                 }
@@ -141,22 +131,7 @@ impl Car {
                 .add_impulse(Impulse::Angular(rb_torque), false, true);
         }
 
-        if self.state.is_flipping && self.state.flip_rel_torque != Vec3A::ZERO {
-            let proj_x = self.body.ang_vel.x + self.body.accum_ang_vel.x;
-            if proj_x > car_consts::flip::SPIN_CAP_X {
-                self.body.accum_ang_vel.x -= proj_x - car_consts::flip::SPIN_CAP_X;
-            } else if proj_x < -car_consts::flip::SPIN_CAP_X {
-                self.body.accum_ang_vel.x -= proj_x + car_consts::flip::SPIN_CAP_X;
-            }
-            let proj_y = self.body.ang_vel.y + self.body.accum_ang_vel.y;
-            if proj_y > car_consts::flip::SPIN_CAP_Y {
-                self.body.accum_ang_vel.y -= proj_y - car_consts::flip::SPIN_CAP_Y;
-            } else if proj_y < -car_consts::flip::SPIN_CAP_Y {
-                self.body.accum_ang_vel.y -= proj_y + car_consts::flip::SPIN_CAP_Y;
-            }
-        }
-
-        let throttle_scale = if self.state.controls.boost {
+        let throttle_scale = if self.state.controls.boost || self.state.is_boosting {
             1.0
         } else {
             self.state.controls.throttle
@@ -287,9 +262,14 @@ impl Car {
 
         if self.state.is_flipping {
             let flip_time_pre = self.state.flip_time;
-            self.state.is_flipping =
+            let still_flipping =
                 self.state.has_flipped && flip_time_pre < car_consts::flip::TORQUE_TIME;
-            self.state.flip_time = flip_time_pre + self.tick_time;
+            self.state.is_flipping = still_flipping;
+            self.state.flip_time = if still_flipping {
+                flip_time_pre + self.tick_time
+            } else {
+                self.tick_time
+            };
             if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
                 .contains(&flip_time_pre)
                 && (self.body.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
@@ -302,30 +282,49 @@ impl Car {
     }
 
     fn update_boost(&mut self, mutator_config: &MutatorConfig) {
-        self.state.is_boosting = if self.state.boost > 0.0 {
-            self.state.controls.boost
-                || (self.state.is_boosting
-                    && self.state.boosting_time < car_consts::boost::MIN_TIME)
-        } else {
-            false
-        };
+        let accel = mutator_config.boost_accel_air;
 
         if self.state.is_boosting {
+            let cost = mutator_config.boost_used_per_second * self.tick_time;
+            self.state.boost = (self.state.boost - cost).max(0.0);
+            let depleted = self.state.boost == 0.0;
+            let latch_expired = !self.state.controls.boost
+                && self.state.boosting_time >= car_consts::boost::MIN_TIME;
+            if depleted || latch_expired {
+                self.state.is_boosting = false;
+                self.state.boosting_time = 0.0;
+                self.state.time_since_boosted += self.tick_time;
+
+                if mutator_config.recharge_boost_enabled
+                    && self.state.time_since_boosted >= mutator_config.recharge_boost_delay
+                {
+                    self.state.boost += mutator_config.recharge_boost_per_second * self.tick_time;
+                }
+            } else {
+                self.state.is_boosting = true;
+                self.state.boosting_time += self.tick_time;
+                self.state.time_since_boosted = 0.0;
+
+                self.body.add_impulse(
+                    Impulse::Linear(
+                        accel * self.state.get_forward_dir() * UU_TO_BT * self.tick_time,
+                    ),
+                    false,
+                    true,
+                );
+            }
+        } else if self.state.controls.boost && self.state.boost > 0.0 {
+            self.state.is_boosting = true;
             self.state.boosting_time += self.tick_time;
             self.state.time_since_boosted = 0.0;
-            self.state.boost -= mutator_config.boost_used_per_second * self.tick_time;
 
             self.body.add_impulse(
-                Impulse::Linear(
-                    mutator_config.boost_accel_air
-                        * self.state.get_forward_dir()
-                        * UU_TO_BT
-                        * self.tick_time,
-                ),
+                Impulse::Linear(accel * self.state.get_forward_dir() * UU_TO_BT * self.tick_time),
                 false,
                 true,
             );
         } else {
+            self.state.is_boosting = false;
             self.state.boosting_time = 0.0;
             self.state.time_since_boosted += self.tick_time;
 
@@ -344,11 +343,11 @@ impl Car {
         let forward_speed_uu = self.body.get_forward_speed() * BT_TO_UU;
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
 
+        let prev_is_flipping = self.state.is_flipping;
+        let prev_flip_time = self.state.flip_time;
         self.update_double_jump_or_flip(mutator_config, jump_pressed, forward_speed_uu);
 
-        // NOTE: Must run after `update_double_jump_or_flip` so a dodge's
-        // first torque impulse is applied on the same tick as the input
-        self.update_air_torque();
+        self.update_air_torque(prev_is_flipping, prev_flip_time);
         self.update_boost(mutator_config);
     }
 
@@ -365,9 +364,6 @@ impl Car {
     }
 
     pub fn step_tick(&mut self, mutator_config: &MutatorConfig) {
-        // Limit velocities, then quantize physics values.
-        // NOTE: Must happen before the car updates so torque calculations see
-        // the limited values, matching RocketSim's tick ordering.
         self.body
             .limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
         crate::bullet::quantize::quantize(&mut self.body);

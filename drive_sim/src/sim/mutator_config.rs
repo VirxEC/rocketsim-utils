@@ -5,6 +5,7 @@ use crate::{GameMode, consts::GRAVITY_Z, sim::consts};
 #[derive(Clone, Copy, Debug)]
 pub struct MutatorConfig {
     pub gravity: Vec3A,
+    pub boost_accel_ground: f32,
     pub boost_used_per_second: f32,
     pub car_spawn_boost_amount: f32,
     pub boost_pad_amount_small: f32,
@@ -28,6 +29,7 @@ impl MutatorConfig {
     pub const fn new(game_mode: GameMode) -> Self {
         Self {
             gravity: Vec3A::new(0.0, 0.0, GRAVITY_Z),
+            boost_accel_ground: consts::car::boost::ACCEL_GROUND,
             boost_used_per_second: match game_mode {
                 GameMode::Heatseeker => 0.0,
                 _ => consts::car::boost::USED_PER_SECOND,

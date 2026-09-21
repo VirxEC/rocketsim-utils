@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [lib]
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 rustc-hash = "2.1.2"
