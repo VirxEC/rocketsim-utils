@@ -97,7 +97,8 @@ impl Car {
                 || self.state.controls.roll != 0.0
             {
                 if prev_is_flipping
-                    || self.state.has_flipped && prev_flip_time < car_consts::flip::PITCHLOCK_EXTRA_TIME
+                    || self.state.has_flipped
+                        && prev_flip_time < car_consts::flip::PITCHLOCK_EXTRA_TIME
                 {
                     pitch_torque_scale = 0.0;
                 }

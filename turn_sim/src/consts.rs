@@ -1,5 +1,4 @@
 pub mod car {
-    /// Car can never exceed this angular velocity (radians/s)
     pub const MAX_ANG_SPEED: f32 = 5.5;
 
     pub mod air_control {

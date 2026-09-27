@@ -74,19 +74,14 @@ impl Arena {
         }
     }
 
-    /// Steps the arena for 1 tick, returning the events produced during that tick
     pub fn step_tick(&mut self) {
-        // Clear the impulses accumulated during the previous tick
         self.bullet_world.clear_accum_forces();
 
-        // Limit velocities pre-tick
         self.bullet_world.collision_obj.limit_vels(
             consts::car::MAX_SPEED * consts::UU_TO_BT,
             consts::car::MAX_ANG_SPEED,
         );
         crate::bullet::dynamics::quantize::quantize(&mut self.bullet_world.collision_obj);
-        // Sync the cached state after rigid-body limits, matching RocketSim's
-        // tick ordering.
         self.car.state.phys.vel = self.bullet_world.collision_obj.lin_vel * consts::BT_TO_UU;
         self.car.state.phys.ang_vel = self.bullet_world.collision_obj.ang_vel;
 

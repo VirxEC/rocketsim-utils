@@ -20,13 +20,7 @@ impl TriangleMesh {
             .map(|ids| TriangleShape::from_points_iter(ids.iter().map(|&j| verts[j])))
             .collect();
 
-        let aabbs = triangles
-            .iter()
-            .map(|tri| Aabb {
-                min: tri.points[0].min(tri.points[1]).min(tri.points[2]),
-                max: tri.points[0].max(tri.points[1]).max(tri.points[2]),
-            })
-            .collect();
+        let aabbs = triangles.iter().map(|tri| tri.aabb()).collect();
 
         Self { triangles, aabbs }
     }

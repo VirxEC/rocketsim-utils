@@ -3,10 +3,6 @@ use glam::Vec4;
 pub struct StaticPlaneShape;
 
 impl StaticPlaneShape {
-    /// We assume that all rays will connect with the floor.
-    /// Performs all 4 ray casts at once, using SIMD.
-    ///
-    /// Returns the hit points in world space.
     pub fn perform_raycast(sources: &[Vec4; 3], targets: &[Vec4; 3]) -> [Vec4; 3] {
         let delta = [
             targets[0] - sources[0],

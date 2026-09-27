@@ -36,7 +36,6 @@ impl Arena {
         }
     }
 
-    /// Steps the arena for 1 tick, returning the events produced during that tick
     pub fn step_tick(&mut self) {
         self.car.step_tick(&self.mutator_config);
     }

@@ -1,13 +1,15 @@
-use glam::Quat;
+use glam::{Quat, Vec3A};
 
 pub trait QuatExt {
-    fn from_angle_axis_up(angle: f32) -> Self;
+    fn from_axis_angle_simd(axis: Vec3A, angle: f32) -> Self;
 }
 
 impl QuatExt for Quat {
+    /// An implementation of `Quat::from_axis_angle` that leverages SIMD.
     #[inline]
-    fn from_angle_axis_up(angle: f32) -> Self {
-        let (s, c) = (angle * 0.5).sin_cos();
-        Self::from_xyzw(0.0, 0.0, s, c)
+    fn from_axis_angle_simd(axis: Vec3A, angle: f32) -> Self {
+        let (s, c) = f32::sin_cos(angle * 0.5);
+        let v = axis * s;
+        Self::from_xyzw(v.x, v.y, v.z, c)
     }
 }

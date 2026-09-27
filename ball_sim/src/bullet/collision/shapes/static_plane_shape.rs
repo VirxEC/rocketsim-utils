@@ -1,6 +1,6 @@
 use glam::Vec3A;
 
-use crate::{bullet::linear_math::LARGE_FLOAT, shared::Aabb};
+use crate::shared::Aabb;
 
 #[derive(Clone, Copy, Debug)]
 pub struct StaticPlaneShape {
@@ -35,8 +35,8 @@ impl StaticPlaneShape {
     fn get_aabb(single_axis_idx: usize, single_axis_backwards: bool, t: Vec3A) -> Aabb {
         const PLANE_CONSTANT_OFFSET: f32 = 0.2;
 
-        let mut min = Vec3A::splat(-LARGE_FLOAT);
-        let mut max = Vec3A::splat(LARGE_FLOAT);
+        let mut min = Vec3A::splat(f32::MIN);
+        let mut max = Vec3A::splat(f32::MAX);
 
         min[single_axis_idx] = t[single_axis_idx] - PLANE_CONSTANT_OFFSET;
         max[single_axis_idx] = t[single_axis_idx] + PLANE_CONSTANT_OFFSET;
@@ -46,9 +46,9 @@ impl StaticPlaneShape {
         } else {
             &mut min
         })[single_axis_idx] = if single_axis_backwards {
-            LARGE_FLOAT
+            f32::MAX
         } else {
-            -LARGE_FLOAT
+            f32::MIN
         };
 
         Aabb { min, max }

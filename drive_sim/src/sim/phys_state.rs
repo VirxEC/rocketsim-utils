@@ -2,9 +2,6 @@ use std::fmt::Display;
 
 use glam::{Mat3A, Vec3A};
 
-/// Default is not implemented for this struct,
-/// because the initial start height of the ball/car is different.
-/// The correct values are set in `BallState::default()` and `CarState::default()`
 #[derive(Clone, Copy, Debug)]
 pub struct PhysState {
     pub pos: Vec3A,
@@ -15,7 +12,6 @@ pub struct PhysState {
 
 impl PhysState {
     #[must_use]
-    /// Flip Y axis (aka rotate 180 degrees around Z axis)
     pub fn flip_y(mut self) -> Self {
         const INVERT_SCALE: Vec3A = Vec3A::new(-1.0, -1.0, 1.0);
 
@@ -31,7 +27,6 @@ impl PhysState {
     }
 
     #[must_use]
-    /// Mirror along X axis (Reflection across the YZ plane)
     pub fn mirror_x(mut self) -> Self {
         const FLIP_SCALES: Vec3A = Vec3A::new(-1.0, 1.0, 1.0);
 
@@ -49,7 +44,6 @@ impl PhysState {
     }
 
     #[must_use]
-    /// Mirror along Y axis (Reflection across the XZ plane)
     pub fn mirror_y(mut self) -> Self {
         const FLIP_SCALES: Vec3A = Vec3A::new(1.0, -1.0, 1.0);
 

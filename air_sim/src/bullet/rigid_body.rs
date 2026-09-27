@@ -127,7 +127,7 @@ impl RigidBody {
     }
 
     pub fn step_simulation(&mut self, time_step: f32) {
-        self.add_impulse(Impulse::Linear(self.gravity * time_step), false, true);
+        self.accum_lin_vel += self.gravity * time_step;
 
         self.lin_vel += self.accum_lin_vel;
         self.ang_vel += self.accum_ang_vel;

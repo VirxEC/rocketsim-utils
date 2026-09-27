@@ -1,4 +1,3 @@
-
 use std::path::Path;
 
 use air_sim::{Arena as SimArena, CarControls, CarState, GameMode};
@@ -338,10 +337,7 @@ fn aerial_backflip_cancel_parity() {
         assert_flip_close(sim.get_car_state(), rs_arena.get_car_state(car_idx), tick);
     }
 
-    assert!(
-        sim.get_car_state().has_flipped,
-        "backflip never triggered"
-    );
+    assert!(sim.get_car_state().has_flipped, "backflip never triggered");
 }
 
 #[test]

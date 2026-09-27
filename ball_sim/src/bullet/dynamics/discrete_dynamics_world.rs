@@ -6,10 +6,7 @@ use super::{
 };
 use crate::{
     ArenaContactTracker,
-    bullet::{
-        collision::{broadphase::GridBroadphase, dispatch::collision_world::CollisionWorld},
-        dynamics::sphere_rigid_body::Impulse,
-    },
+    bullet::collision::{broadphase::GridBroadphase, dispatch::collision_world::CollisionWorld},
 };
 
 #[derive(Clone)]
@@ -49,11 +46,7 @@ impl DiscreteDynamicsWorld {
 
     #[inline]
     fn apply_gravity(&mut self, time_step: f32) {
-        self.collision_world.ball_obj.add_impulse(
-            Impulse::Linear(self.gravity * time_step),
-            false,
-            true,
-        );
+        self.collision_world.ball_obj.accum_lin_vel += self.gravity * time_step;
     }
 
     fn predict_unconstraint_motion(&mut self, time_step: f32) {
@@ -66,8 +59,6 @@ impl DiscreteDynamicsWorld {
 
     #[inline]
     fn solve_constraints(&mut self, time_step: f32) {
-        // Disjoint dispatcher fields: the solver reads the persistent
-        // manifolds for this tick's active pair indices.
         let dispatcher = &mut self.collision_world.dispatcher1;
         self.solver.solve_group(
             &mut self.collision_world.ball_obj,

@@ -6,6 +6,7 @@ use std::{
     time::Instant,
 };
 
+use glam::Vec3A;
 use log::{error, info, warn};
 use rustc_hash::FxHashMap;
 
@@ -19,7 +20,6 @@ use crate::{
         },
     },
 };
-use glam::Vec3A;
 
 static HAS_INITIALIZED_LOCK: OnceLock<()> = OnceLock::new();
 

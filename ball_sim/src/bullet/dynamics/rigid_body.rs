@@ -32,7 +32,6 @@ pub struct RigidBody {
     pub restitution: f32,
     /// Cached shape breaking threshold (`angular_disc * 0.02`).
     /// Shapes never change after construction, so cache the disc math here
-    /// instead of recomputing it per manifold creation.
     /// Read it via [`get_contact_breaking_threshold`](Self::get_contact_breaking_threshold).
     contact_breaking_threshold: f32,
 }
@@ -41,8 +40,6 @@ impl RigidBody {
     pub fn new(info: RigidBodyConstructionInfo) -> Self {
         // Shapes are immutable after construction, so the angular-disc
         // threshold never changes for this body. Cache it once.
-        // (Mirrors upstream's `angular_disc * default_threshold`: the
-        // bounding-sphere radius plus the center offset.)
         let aabb = info.collision_shape.get_aabb();
         let center = (aabb.min + aabb.max) * 0.5;
         let radius = (aabb.max - aabb.min).length() * 0.5;

@@ -1,3 +1,5 @@
+use glam::Vec3A;
+
 use crate::bullet::{
     collision::{
         dispatch::internal_edge_utility::adjust_internal_edge_contacts,
@@ -6,10 +8,10 @@ use crate::bullet::{
     dynamics::rigid_body::RigidBody,
 };
 
-// Store one contact event.
 #[derive(Debug, Copy, Clone)]
 pub struct ContactRecord {
-    pub manifold_point: ManifoldPoint,
+    pub pos_world_on_b: Vec3A,
+    pub normal_world_on_b: Vec3A,
 }
 
 #[derive(Clone, Debug)]
@@ -48,19 +50,12 @@ impl ArenaContactTracker {
         body_b: &RigidBody,
         triangle_idx: Option<usize>,
     ) {
-        // In ball_sim `body_b` is always a static world body (the ball is a
-        // `SphereRigidBody` and never appears here); upstream additionally
-        // requires `body_b.is_static_obj()`.
         manifold_point.is_special = true;
 
         // Record contact data before edge adjustment changes the manifold.
-        if manifold_point.is_special {
-            // Save the raw normal for special-contact aggregation.
-            manifold_point.raw_normal_world_on_b = manifold_point.normal_world_on_b;
-        }
-
         self.collision_records.push(ContactRecord {
-            manifold_point: *manifold_point,
+            pos_world_on_b: manifold_point.pos_world_on_b,
+            normal_world_on_b: manifold_point.normal_world_on_b,
         });
 
         if let Some(idx) = triangle_idx {

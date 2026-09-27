@@ -24,16 +24,14 @@ fn quantize_vec_ue3(vec: Vec3A, scale: f32, quantize_mode: VecQuantizeMode) -> V
         VecQuantizeMode::Position => (vec * scale + 0.5).floor() / scale,
         VecQuantizeMode::Velocity => {
             let inv_scale = 1.0 / scale;
-            let mut rounded = Vec3A::ZERO;
-            for i in 0..3 {
-                let i_val = (vec[i] * scale) as i32;
-                rounded[i] = (i_val as f32) * inv_scale;
-            }
+            let scaled = vec * scale;
+            let truncated = scaled.trunc();
+            let rounded = truncated * inv_scale + Vec3A::ZERO;
 
             const OFFSET_CORRECT_FRAC: f32 = 0.1;
             let offset_mag = OFFSET_CORRECT_FRAC * inv_scale;
 
-            rounded + (vec3a_sign_3(rounded) * offset_mag)
+            rounded + (vec3a_sign_3(truncated) * offset_mag)
         }
     }
 }

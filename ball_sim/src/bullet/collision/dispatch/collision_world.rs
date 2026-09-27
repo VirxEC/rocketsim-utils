@@ -56,21 +56,15 @@ impl CollisionWorld {
     }
 
     fn update_aabbs(&mut self) {
-        let mut aabb = self
-            .ball_obj
-            .get_collision_shape()
-            .get_aabb(self.ball_obj.get_world_trans());
+        let shape = self.ball_obj.get_collision_shape();
+        let aabb = shape.get_aabb_covering(
+            self.ball_obj.get_world_trans(),
+            self.ball_obj.interp_world_trans,
+        );
 
+        let mut aabb = aabb;
         aabb.min -= Self::CBT;
         aabb.max += Self::CBT;
-
-        let mut aabb2 = self
-            .ball_obj
-            .get_collision_shape()
-            .get_aabb(self.ball_obj.interp_world_trans);
-        aabb2.min -= Self::CBT;
-        aabb2.max += Self::CBT;
-        aabb += aabb2;
 
         debug_assert!((aabb.max - aabb.min).length_squared() < 1e12);
         self.broadphase_pair_cache.set_aabb(aabb);
@@ -80,13 +74,10 @@ impl CollisionWorld {
         &mut self,
         contact_added_callback: &mut ArenaContactTracker,
     ) {
-        // Fresh active set each tick; persistent manifolds carry
-        // contacts across ticks. (The old solver drains `manifolds`.)
         self.dispatcher1.active_manifolds.clear();
 
         self.update_aabbs();
 
-        self.broadphase_pair_cache.calculate_overlapping_pairs();
         self.broadphase_pair_cache.process_all_overlapping_pairs(
             &self.ball_obj,
             &self.collision_objs,

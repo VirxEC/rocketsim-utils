@@ -23,7 +23,6 @@ pub struct CarState {
     ///
     /// Forward flip will have positive Y
     pub flip_rel_torque: Vec3A,
-    /// When currently jumping, the time since we started jumping, else 0
     pub jump_time: f32,
     /// When currently flipping, the time since we started flipping, else 0
     pub flip_time: f32,
@@ -43,7 +42,6 @@ pub struct CarState {
     pub air_time_since_jump: f32,
     /// Goes from 0 to 100
     pub boost: f32,
-    /// Used for recharge boost, counts up from 0 on spawn (in seconds)
     pub time_since_boosted: f32,
     /// True if we boosted that tick
     ///

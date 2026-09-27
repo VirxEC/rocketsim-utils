@@ -141,12 +141,8 @@ fn ball_state_round_trip_matches_direct_sim() {
                 charge_level: SimDropshotInfo::DEFAULT.charge_level,
                 accumulated_hit_force: SimDropshotInfo::DEFAULT.accumulated_hit_force,
                 y_target_dir: SimDropshotInfo::DEFAULT.y_target_dir,
-                last_damage_tick_present: SimDropshotInfo::DEFAULT
-                    .last_damage_tick
-                    .is_some(),
-                last_damage_tick: SimDropshotInfo::DEFAULT
-                    .last_damage_tick
-                    .unwrap_or(0),
+                last_damage_tick_present: SimDropshotInfo::DEFAULT.last_damage_tick.is_some(),
+                last_damage_tick: SimDropshotInfo::DEFAULT.last_damage_tick.unwrap_or(0),
             },
             tick_count_since_kickoff: 0,
         },
@@ -164,7 +160,10 @@ fn ball_state_round_trip_matches_direct_sim() {
     assert_eq!(to_vec3a(back.pos), sim_state.phys.pos);
     assert_eq!(to_vec3a(back.vel), sim_state.phys.vel);
     assert_eq!(to_vec3a(back.ang_vel), sim_state.phys.ang_vel);
-    assert_eq!(back.tick_count_since_kickoff, sim_state.tick_count_since_kickoff);
+    assert_eq!(
+        back.tick_count_since_kickoff,
+        sim_state.tick_count_since_kickoff
+    );
 }
 
 #[test]

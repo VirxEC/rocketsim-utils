@@ -91,7 +91,13 @@ fn assert_parity(mode: GameMode, state: BallState, ticks: usize) {
     );
 }
 
-fn random_state(rng: &mut SmallRng, x_max: f32, y_max: f32, z_max: f32, max_speed: f32) -> BallState {
+fn random_state(
+    rng: &mut SmallRng,
+    x_max: f32,
+    y_max: f32,
+    z_max: f32,
+    max_speed: f32,
+) -> BallState {
     let pos = Vec3A::new(
         rng.random_range(-x_max..x_max),
         rng.random_range(-y_max..y_max),

@@ -1,12 +1,12 @@
 use glam::Vec3A;
 
-use crate::bullet::dynamics::{
-    constraint_solver::{contact_solver_info, solver_constraint::SolverConstraint},
-    sphere_rigid_body::SphereRigidBody,
-};
+use crate::bullet::dynamics::sphere_rigid_body::SphereRigidBody;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SolverBody {
+    // NOTE: No transform copy lives here. Bodies are untouched between solver
+    // setup and write-back, so the rare split-impulse push path reloads the
+    // transform from the body itself (see `solve_group_finish`).
     pub delta_lin_vel: Vec3A,
     pub delta_ang_vel: Vec3A,
     pub inv_mass: Vec3A,
@@ -15,6 +15,7 @@ pub struct SolverBody {
     pub lin_vel: Vec3A,
     pub ang_vel: Vec3A,
     pub external_force_impulse: Vec3A,
+    pub external_torque_impulse: Vec3A,
 }
 
 impl SolverBody {
@@ -27,55 +28,36 @@ impl SolverBody {
         lin_vel: Vec3A::ZERO,
         ang_vel: Vec3A::ZERO,
         external_force_impulse: Vec3A::ZERO,
+        external_torque_impulse: Vec3A::ZERO,
     };
 
-    pub fn get_vel_in_local_point_no_delta(&self, rel_pos: Vec3A) -> Vec3A {
-        self.lin_vel + self.external_force_impulse + self.ang_vel.cross(rel_pos)
-    }
-
-    pub fn update(&mut self, rb: &SphereRigidBody) {
-        self.delta_lin_vel = Vec3A::ZERO;
-        self.delta_ang_vel = Vec3A::ZERO;
-        self.inv_mass = rb.inv_mass_splat;
-        self.push_vel = Vec3A::ZERO;
-        self.turn_vel = Vec3A::ZERO;
-        self.lin_vel = rb.lin_vel;
-        self.ang_vel = rb.ang_vel;
-        self.external_force_impulse = rb.accum_lin_vel;
-    }
-
-    pub fn solve_group_split_impulse_iterations(&mut self, contact: &mut SolverConstraint) {
-        if contact.rhs_penetration == 0.0 {
-            return;
-        }
-
-        for _ in 0..contact_solver_info::NUM_ITERATIONS {
-            let residual = contact.resolve_split_penetration_impulse(self);
-            if residual * residual == 0.0 {
-                break;
-            }
+    pub fn new(rb: &SphereRigidBody) -> Self {
+        Self {
+            delta_lin_vel: Vec3A::ZERO,
+            delta_ang_vel: Vec3A::ZERO,
+            inv_mass: rb.inv_mass_splat,
+            push_vel: Vec3A::ZERO,
+            turn_vel: Vec3A::ZERO,
+            lin_vel: rb.lin_vel,
+            ang_vel: rb.ang_vel,
+            external_force_impulse: rb.accum_lin_vel,
+            external_torque_impulse: rb.accum_ang_vel,
         }
     }
 
-    pub fn solve_single_iteration(
+    pub fn internal_apply_impulse(
         &mut self,
-        contact: &mut SolverConstraint,
-        friction: &mut SolverConstraint,
-    ) -> f32 {
-        let mut least_squares_residual = 0.0;
+        linear_component: Vec3A,
+        angular_component: Vec3A,
+        impulse_magnitude: f32,
+    ) {
+        self.delta_lin_vel += linear_component * impulse_magnitude;
+        self.delta_ang_vel += angular_component * impulse_magnitude;
+    }
 
-        let residual = contact.resolve_single_constraint_row_lower_limit(self);
-        least_squares_residual = (residual * residual).max(least_squares_residual);
-
-        if contact.applied_impulse > 0.0 {
-            let limit = friction.friction * contact.applied_impulse;
-            friction.lower_limit = -limit;
-            friction.upper_limit = limit;
-
-            let residual = friction.resolve_single_constraint_row_generic(self);
-            least_squares_residual = (residual * residual).max(least_squares_residual);
-        }
-
-        least_squares_residual
+    pub fn get_vel_in_local_point_no_delta(&self, rel_pos: Vec3A) -> Vec3A {
+        self.lin_vel
+            + self.external_force_impulse
+            + (self.ang_vel + self.external_torque_impulse).cross(rel_pos)
     }
 }

@@ -190,7 +190,13 @@ fn boost_drive_parity() {
     let mut sim = SimArena::new(GameMode::Soccar, 120);
     let (mut rs_arena, car_idx) = make_rs_arena();
 
-    set_both_states(&mut sim, &mut rs_arena, car_idx, Vec3A::new(0.0, -2000.0, 17.0), 40.0);
+    set_both_states(
+        &mut sim,
+        &mut rs_arena,
+        car_idx,
+        Vec3A::new(0.0, -2000.0, 17.0),
+        40.0,
+    );
 
     for tick in 0..240 {
         let controls = if tick < 120 {
@@ -231,7 +237,13 @@ fn boost_pickup_parity() {
     let car_idx = rs_arena.add_car(rs::Team::Blue, rs::CarBodyConfig::OCTANE);
     assert_eq!(sim.num_boost_pads(), rs_arena.num_boost_pads());
 
-    set_both_states(&mut sim, &mut rs_arena, car_idx, Vec3A::new(0.0, -1024.0, 17.0), 0.0);
+    set_both_states(
+        &mut sim,
+        &mut rs_arena,
+        car_idx,
+        Vec3A::new(0.0, -1024.0, 17.0),
+        0.0,
+    );
 
     for tick in 0..8 {
         set_both_controls(&mut sim, &mut rs_arena, car_idx, CarControls::DEFAULT);
@@ -281,7 +293,13 @@ fn brake_coast_parity() {
     let mut sim = SimArena::new(GameMode::Soccar, 120);
     let (mut rs_arena, car_idx) = make_rs_arena();
 
-    set_both_states(&mut sim, &mut rs_arena, car_idx, Vec3A::new(0.0, -2000.0, 17.0), 33.0);
+    set_both_states(
+        &mut sim,
+        &mut rs_arena,
+        car_idx,
+        Vec3A::new(0.0, -2000.0, 17.0),
+        33.0,
+    );
 
     for tick in 0..360 {
         let controls = if tick < 120 {
@@ -314,7 +332,13 @@ fn handbrake_circle_parity() {
     let mut sim = SimArena::new(GameMode::Soccar, 120);
     let (mut rs_arena, car_idx) = make_rs_arena();
 
-    set_both_states(&mut sim, &mut rs_arena, car_idx, Vec3A::new(0.0, -2000.0, 17.0), 33.0);
+    set_both_states(
+        &mut sim,
+        &mut rs_arena,
+        car_idx,
+        Vec3A::new(0.0, -2000.0, 17.0),
+        33.0,
+    );
 
     for tick in 0..150 {
         set_both_controls(
@@ -343,7 +367,13 @@ fn spawn_sticky_gate_parity() {
     let mut sim = SimArena::new(GameMode::Soccar, 120);
     let (mut rs_arena, car_idx) = make_rs_arena();
 
-    set_both_states(&mut sim, &mut rs_arena, car_idx, Vec3A::new(0.0, -2000.0, 17.0), 33.0);
+    set_both_states(
+        &mut sim,
+        &mut rs_arena,
+        car_idx,
+        Vec3A::new(0.0, -2000.0, 17.0),
+        33.0,
+    );
 
     for tick in 0..200 {
         set_both_controls(

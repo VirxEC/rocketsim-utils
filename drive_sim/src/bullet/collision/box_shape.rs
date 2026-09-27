@@ -11,9 +11,10 @@ impl BoxShape {
     #[inline]
     pub fn new(box_half_extents: Vec3A) -> Self {
         let safe_margin = 0.1 * box_half_extents.min_element();
+        let margin = safe_margin.min(CONVEX_DISTANCE_MARGIN);
         Self {
-            implicit_dim: box_half_extents - CONVEX_DISTANCE_MARGIN,
-            margin: safe_margin.min(CONVEX_DISTANCE_MARGIN),
+            implicit_dim: box_half_extents - margin,
+            margin,
         }
     }
 

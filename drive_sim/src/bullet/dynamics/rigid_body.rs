@@ -150,16 +150,21 @@ impl RigidBody {
             angle = angular_motion_threshold;
         }
 
-        let axis = if angle < 0.001 {
-            self.ang_vel
-                * (0.5 * tick_time - tick_time * tick_time * tick_time * 0.020_833_334)
-                * angle
-                * angle
+        let half_angle = angle * tick_time * 0.5;
+        let (axis, cos_half_angle) = if angle < 0.001 {
+            (
+                self.ang_vel
+                    * (0.5 * tick_time - tick_time * tick_time * tick_time * 0.020_833_334)
+                    * angle
+                    * angle,
+                half_angle.cos(),
+            )
         } else {
-            self.ang_vel * ((0.5 * angle * tick_time).sin() / angle)
+            let (sin_half_angle, cos_half_angle) = half_angle.sin_cos();
+            (self.ang_vel * (sin_half_angle / angle), cos_half_angle)
         };
 
-        let dorn = Quat::from_xyzw(axis.x, axis.y, axis.z, (angle * tick_time * 0.5).cos());
+        let dorn = Quat::from_xyzw(axis.x, axis.y, axis.z, cos_half_angle);
         self.quat_trans = (dorn * self.quat_trans).normalize();
         self.world_trans.matrix3 = Mat3A::from_quat(self.quat_trans);
 
@@ -170,6 +175,11 @@ impl RigidBody {
         self.quat_trans = Quat::from_mat3a(&xform.matrix3);
         self.world_trans = xform;
         self.update_inertia_tensor();
+    }
+
+    #[inline]
+    pub fn set_world_pos(&mut self, pos: Vec3A) {
+        self.world_trans.translation = pos;
     }
 
     pub fn get_vel_in_local_point(&self, rel_pos: Vec3A) -> Vec3A {

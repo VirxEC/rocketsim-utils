@@ -1,6 +1,6 @@
 use glam::Vec3A;
 
-use super::rigid_body::{Impulse, RigidBody};
+use super::rigid_body::RigidBody;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DiscreteDynamicsWorld {
@@ -8,13 +8,8 @@ pub struct DiscreteDynamicsWorld {
 }
 
 impl DiscreteDynamicsWorld {
-    /// Applies gravity, then applies all accumulated impulses and integrates the body.
-    ///
-    /// Accumulated impulses must be cleared before accumulating new ones
-    /// (see [`Self::clear_accum_forces`]).
     pub fn step_simulation(&mut self, gravity: Vec3A, tick_time: f32) {
-        self.collision_obj
-            .add_impulse(Impulse::Linear(gravity * tick_time), false, true);
+        self.collision_obj.accum_lin_vel += gravity * tick_time;
 
         let rb = &mut self.collision_obj;
         rb.lin_vel += rb.accum_lin_vel;

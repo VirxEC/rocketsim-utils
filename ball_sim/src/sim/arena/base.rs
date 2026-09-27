@@ -207,7 +207,6 @@ impl Arena {
         self.set_ball_state(ball_state);
     }
 
-    /// Steps the arena for 1 tick, returning the events produced during that tick
     pub fn step_tick(&mut self) -> &[BallHitWorldEvent] {
         self.events.clear();
 
@@ -236,9 +235,9 @@ impl Arena {
 
         let contact_count = self.contact_tracker.num_records();
         for idx in 0..contact_count {
-            let manifold_point = &self.contact_tracker.get_record(idx).manifold_point;
-            let contact_point = manifold_point.pos_world_on_b * BT_TO_UU;
-            let contact_normal = manifold_point.normal_world_on_b;
+            let record = self.contact_tracker.get_record(idx);
+            let contact_point = record.pos_world_on_b * BT_TO_UU;
+            let contact_normal = record.normal_world_on_b;
 
             self.ball.on_world_hit(
                 self.bullet_world.ball_mut(),
@@ -293,7 +292,6 @@ impl Arena {
     }
 
     #[must_use]
-    /// Returns the events generated during the last stepped tick
     pub fn get_last_step_events(&self) -> &[BallHitWorldEvent] {
         self.events.events()
     }

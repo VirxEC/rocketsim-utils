@@ -11,17 +11,13 @@ pub struct CarState {
     pub controls: CarControls,
     /// Goes from 0 to 100
     pub boost: f32,
-    /// Used for recharge boost, counts up from 0 on spawn (in seconds)
     pub time_since_boosted: f32,
     /// True if we boosted that tick
     ///
     /// There exists a minimum boosting time, thus why we must track boosting time
     pub is_boosting: bool,
     pub boosting_time: f32,
-    /// This is a state variable due to the rise/fall rate of handbrake inputs
     pub handbrake_val: f32,
-    /// Whether each of the 4 wheels had contact at the end of the last tick
-    ///
     /// First two are front
     pub wheels_with_contact: [bool; 4],
 }

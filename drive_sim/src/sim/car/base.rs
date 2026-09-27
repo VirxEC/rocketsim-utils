@@ -22,9 +22,6 @@ use crate::{
 pub struct Car {
     pub bullet_vehicle: VehicleRL,
     pub state: CarState,
-    /// Wheel-world-contact from the END of the previous tick. The game gates
-    /// the sticky force on last tick's contact, so a car spawned on the
-    /// ground does not stick until its second tick.
     sticky_gate_prev: bool,
 }
 
@@ -152,14 +149,13 @@ impl Car {
         }
 
         steer_angle *= self.state.controls.steer;
-        let steering_orn = Quat::from_angle_axis_up(steer_angle);
+        let steering_orn =
+            Quat::from_axis_angle_simd(rb.get_world_trans().matrix3.z_axis, steer_angle);
         self.bullet_vehicle.steering_orn[0] = steering_orn;
         self.bullet_vehicle.steering_orn[1] = steering_orn;
 
         // fresh raycast contact must not produce sticky force within its own tick
         if self.sticky_gate_prev {
-            // The sim only raycasts against a flat static plane, so the
-            // upwards dir from the wheel contacts is always world-up.
             const UPWARDS_DIR: Vec3A = Vec3A::Z;
 
             let full_stick =
@@ -202,9 +198,7 @@ impl Car {
                 self.state.time_since_boosted = 0.0;
 
                 rb.add_impulse(
-                    Impulse::Linear(
-                        self.state.get_forward_dir() * (accel * UU_TO_BT) * tick_time,
-                    ),
+                    Impulse::Linear(self.state.get_forward_dir() * (accel * UU_TO_BT) * tick_time),
                     false,
                     true,
                 );
@@ -243,9 +237,6 @@ impl Car {
         self.state.controls = self.state.controls.clamp();
         let forward_speed_uu = collision_world.collision_obj.get_forward_speed() * BT_TO_UU;
 
-        // NOTE: RocketSim scales engine force by /4 with <3 wheels in contact
-        // in the vehicle layer. drive_sim always has 4 wheels down on its flat
-        // plane, so no scaling applies here.
         let real_throttle = self.state.controls.throttle;
 
         self.update_wheels(
@@ -262,12 +253,11 @@ impl Car {
             tick_time,
         );
 
-        let real_throttle_vehicle =
-            if self.state.controls.boost && self.state.boost > 0.0 {
-                1.0
-            } else {
-                real_throttle
-            };
+        let real_throttle_vehicle = if self.state.controls.boost && self.state.boost > 0.0 {
+            1.0
+        } else {
+            real_throttle
+        };
         self.bullet_vehicle.update(
             &mut collision_world.collision_obj,
             tick_time,

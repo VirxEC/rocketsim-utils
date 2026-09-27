@@ -2,28 +2,20 @@ use glam::Vec4;
 
 use crate::bullet::dynamics::rigid_body::RigidBody;
 
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_single_bilateral(
     chassis: &RigidBody,
     rel_pos_x: Vec4,
     rel_pos_y: Vec4,
     rel_pos_z: Vec4,
+    vel_x: Vec4,
+    vel_y: Vec4,
+    vel_z: Vec4,
     normal_x: Vec4,
     normal_y: Vec4,
     normal_z: Vec4,
 ) -> Vec4 {
     const CONTACT_DAMPING: Vec4 = Vec4::splat(-0.2);
-
-    let avx = Vec4::splat(chassis.ang_vel.x);
-    let avy = Vec4::splat(chassis.ang_vel.y);
-    let avz = Vec4::splat(chassis.ang_vel.z);
-
-    let cross_x = avy * rel_pos_z - avz * rel_pos_y;
-    let cross_y = avz * rel_pos_x - avx * rel_pos_z;
-    let cross_z = avx * rel_pos_y - avy * rel_pos_x;
-
-    let vel_x = cross_x + chassis.lin_vel.x;
-    let vel_y = cross_y + chassis.lin_vel.y;
-    let vel_z = cross_z + chassis.lin_vel.z;
 
     let rel_vel = normal_x * vel_x + normal_y * vel_y + normal_z * vel_z;
 

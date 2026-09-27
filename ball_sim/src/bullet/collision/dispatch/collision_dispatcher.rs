@@ -1,7 +1,4 @@
-use super::{
-    convex_concave_collision_alg::{self, PendingSphereContact},
-    convex_plane_collision_alg,
-};
+use super::{convex_concave_collision_alg, convex_plane_collision_alg};
 use crate::{
     ArenaContactTracker,
     bullet::{
@@ -14,9 +11,6 @@ use crate::{
     },
 };
 
-/// Index of the ball in persistent-manifold pair keys.
-/// The ball is always `body0`; static bodies use `client_obj_idx + 1`
-/// (the `+ 1` keeps every static distinct from the ball).
 const BALL_BODY_IDX: usize = 0;
 
 #[inline]
@@ -37,7 +31,6 @@ pub struct CollisionDispatcher {
     /// sites below; any removal/clear must rebuild this table too.
     manifold_table: Vec<u32>,
     manifold_stride: usize,
-    sphere_contact_scratch: Vec<PendingSphereContact>,
 }
 
 impl Default for CollisionDispatcher {
@@ -47,17 +40,12 @@ impl Default for CollisionDispatcher {
             active_manifolds: Vec::with_capacity(8),
             manifold_table: Vec::new(),
             manifold_stride: 0,
-            // Ball-vs-mesh sweeps collect a few triangle hits;
-            // keep the buffer across ticks instead of reallocating.
-            sphere_contact_scratch: Vec::with_capacity(16),
         }
     }
 }
 
 impl CollisionDispatcher {
     /// Push a first-seen pair's manifold and record its index.
-    /// Stamps the ball/static pair indices onto the manifold (ball_sim
-    /// bodies carry no pair indices, unlike upstream's `world_array_idx`).
     fn insert_persistent_manifold(
         &mut self,
         body0_idx: usize,
@@ -112,8 +100,6 @@ impl CollisionDispatcher {
                 contact_added_callback,
                 out,
             ),
-            // Mesh collisions reuse a persistent manifold via
-            // `process_collision_into`; see `near_callback`.
             CollisionShapes::TriangleMesh(_) => unreachable!(),
         }
     }
@@ -160,9 +146,6 @@ impl CollisionDispatcher {
                     body0_idx,
                     body1_idx,
                     wanted,
-                    // Upstream caches the threshold per body and takes the
-                    // min for the pair. (The static mesh body's world-space
-                    // disc dwarfs the ball's, so this equals the ball's.)
                     PersistentManifold::new(
                         rb0.get_contact_breaking_threshold()
                             .min(rb1.get_contact_breaking_threshold()),
@@ -174,7 +157,6 @@ impl CollisionDispatcher {
                 rb1,
                 mesh,
                 &mut self.persistent_manifolds[persistent_idx],
-                &mut self.sphere_contact_scratch,
                 contact_added_callback,
             );
 
@@ -188,13 +170,8 @@ impl CollisionDispatcher {
         Self::process_collision(rb0, rb1, contact_added_callback, &mut fresh);
 
         // Share the persistent manifold with the solver by index instead
-        // of pushing a per-tick clone. Merge and refresh order mirrors
-        // upstream: cull separated points before merging fresh
-        // detections, and skip the no-op empty refresh.
         let active_idx = match (cached_idx, fresh) {
             (Some(cached_idx), Some(fresh_manifold)) => {
-                // Skip the no-op empty refresh (see `refresh_contact_points`);
-                // the merge below behaves identically on an empty cache either way.
                 if !self.persistent_manifolds[cached_idx].point_cache.is_empty() {
                     self.persistent_manifolds[cached_idx].refresh_contact_points(rb0, rb1);
                 }
@@ -202,8 +179,6 @@ impl CollisionDispatcher {
                 cached_idx
             }
             (Some(cached_idx), None) => {
-                // Skip the no-op empty refresh; an empty manifold stays
-                // empty and the active push below is already guarded.
                 if !self.persistent_manifolds[cached_idx].point_cache.is_empty() {
                     self.persistent_manifolds[cached_idx].refresh_contact_points(rb0, rb1);
                 }

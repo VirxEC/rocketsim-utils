@@ -29,7 +29,7 @@ pub fn process_collision(
     let plane_trans = plane_obj.get_world_trans();
     let convex_in_plane_trans = convex_trans - plane_trans;
 
-    let vtx = convex_shape.local_get_supporting_vertex(-plane_normal);
+    let vtx = convex_shape.get_margin() * -plane_normal;
     let vtx_in_plane = convex_in_plane_trans + vtx;
     let distance = plane_normal.dot(vtx_in_plane);
 

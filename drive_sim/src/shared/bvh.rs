@@ -159,55 +159,33 @@ impl Tree {
         mem::swap(a, b);
     }
 
-    #[allow(dead_code)] // Part of the upstream BVH4 API; unused by this crate's lib
-    pub fn check_overlap_with(&self, aabb: &Aabb) -> bool {
-        if !aabb.intersects(&self.aabb) {
-            return false;
-        }
-
-        let mut stack = [0usize; Self::TRAVERSAL_STACK_SIZE];
-        let mut stack_len = 1;
-        while stack_len != 0 {
-            stack_len -= 1;
-            let node = &self.wide_nodes[stack[stack_len]];
-            let mask = node.intersection_mask(aabb);
-            for lane in 0..node.child_count as usize {
-                if mask & (1 << lane) == 0 {
-                    continue;
-                }
-                if node.children[lane].leaf_idx().is_some() {
-                    return true;
-                }
-                stack[stack_len] = node.children[lane].branch_idx();
-                stack_len += 1;
-            }
-        }
-        false
-    }
-
     pub fn report_aabb_overlapping_node<T: ProcessNode>(&self, node_callback: &mut T, aabb: &Aabb) {
         if !aabb.intersects(&self.aabb) {
             return;
         }
 
-        let mut stack = [WideChild::default(); Self::TRAVERSAL_STACK_SIZE];
-        stack[0] = WideChild::branch(0);
+        // Only the pushed prefix is read, so leave the rest uninitialized.
+        use std::mem::MaybeUninit;
+        let mut stack = [MaybeUninit::<WideChild>::uninit(); Self::TRAVERSAL_STACK_SIZE];
+        stack[0].write(WideChild::branch(0));
         let mut stack_len = 1;
         while stack_len != 0 {
             stack_len -= 1;
-            let work = stack[stack_len];
+            // SAFETY: only indices below `stack_len + 1` are read, each written before bump.
+            let work = unsafe { stack[stack_len].assume_init() };
             if let Some(storage_idx) = work.leaf_idx() {
-                std::hint::cold_path();
                 node_callback.process_node(self.leaves[storage_idx].leaf_idx);
                 continue;
             }
 
             let node = &self.wide_nodes[work.branch_idx()];
             let mask = node.intersection_mask(aabb);
-            for lane in (0..node.child_count as usize).rev() {
+            let mut lane = usize::from(node.child_count);
+            while lane > 0 {
+                lane -= 1;
                 if mask & (1 << lane) != 0 {
-                    std::hint::cold_path();
-                    stack[stack_len] = node.children[lane];
+                    debug_assert!(stack_len < Self::TRAVERSAL_STACK_SIZE);
+                    stack[stack_len].write(node.children[lane]);
                     stack_len += 1;
                 }
             }
@@ -303,10 +281,7 @@ impl BinaryTree {
             frontier.splice(slot..=slot, [left, right]);
         }
 
-        let mut wide = WideNode {
-            child_count: frontier.len() as u8,
-            ..Default::default()
-        };
+        let mut wide = WideNode::with_child_count(frontier.len() as u8);
         let mut max_child_depth = 0;
         for (lane, binary_idx) in frontier.into_iter().enumerate() {
             let node = self.nodes[binary_idx];
@@ -314,10 +289,7 @@ impl BinaryTree {
             wide.children[lane] = match node.node_type {
                 BvhNodeType::Leaf { leaf_idx } => {
                     let storage_idx = leaves.len();
-                    leaves.push(WideLeaf {
-                        bounds: node.aabb,
-                        leaf_idx,
-                    });
+                    leaves.push(WideLeaf { leaf_idx });
                     WideChild::leaf(storage_idx)
                 }
                 BvhNodeType::Branch { .. } => {
@@ -354,8 +326,6 @@ impl Node {
 
 #[derive(Debug, Clone, Copy)]
 struct WideLeaf {
-    #[expect(dead_code)] // Used by quad-ray traversal in full RocketSim
-    bounds: Aabb,
     leaf_idx: usize,
 }
 
@@ -369,9 +339,18 @@ struct WideNode {
     max_z: Vec4,
     children: [WideChild; 4],
     child_count: u8,
+    valid_mask: u32,
 }
 
 impl WideNode {
+    fn with_child_count(child_count: u8) -> Self {
+        debug_assert!((1..=4).contains(&child_count));
+        Self {
+            child_count,
+            valid_mask: (1u32 << child_count) - 1,
+            ..Default::default()
+        }
+    }
     fn set_bounds(&mut self, lane: usize, aabb: Aabb) {
         self.min_x[lane] = aabb.min.x;
         self.min_y[lane] = aabb.min.y;
@@ -388,35 +367,36 @@ impl WideNode {
             & self.max_y.cmpge(Vec4::splat(aabb.min.y))
             & self.min_z.cmple(Vec4::splat(aabb.max.z))
             & self.max_z.cmpge(Vec4::splat(aabb.min.z));
-        overlap.bitmask() & ((1 << self.child_count) - 1)
+        overlap.bitmask() & self.valid_mask
     }
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-struct WideChild(usize);
+struct WideChild(u32);
 
 impl WideChild {
-    const LEAF_BIT: usize = 1 << (usize::BITS - 1);
+    const LEAF_BIT: u32 = 1 << (u32::BITS - 1);
 
     const fn leaf(storage_idx: usize) -> Self {
-        assert!(storage_idx < Self::LEAF_BIT);
-        Self(Self::LEAF_BIT | storage_idx)
+        assert!(storage_idx < Self::LEAF_BIT as usize);
+        Self(Self::LEAF_BIT | storage_idx as u32)
     }
 
     const fn branch(branch_idx: usize) -> Self {
-        Self(branch_idx)
+        assert!(branch_idx < Self::LEAF_BIT as usize);
+        Self(branch_idx as u32)
     }
 
     const fn leaf_idx(self) -> Option<usize> {
         if self.0 & Self::LEAF_BIT != 0 {
-            Some(self.0 & !Self::LEAF_BIT)
+            Some((self.0 & !Self::LEAF_BIT) as usize)
         } else {
             None
         }
     }
 
     const fn branch_idx(self) -> usize {
-        self.0
+        self.0 as usize
     }
 }
 

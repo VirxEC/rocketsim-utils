@@ -41,18 +41,21 @@ pub struct VehicleRL {
     pub lat_friction: Vec4,
     pub long_friction: Vec4,
     impulse: [Vec4; 3],
-    /// Whether any wheel raycast hit the world during this tick's update
     pub had_world_contact: bool,
 }
 
 impl VehicleRL {
-    fn calc_friction_impulses(&mut self, chassis: &RigidBody, friction_scale: f32) {
-        const ROLLING_FRICTION_SCALE: f32 = 113.73963;
-
+    fn contact_rel_pos(&self, chassis: &RigidBody) -> [Vec4; 3] {
         let chassis_pos = chassis.get_world_trans().translation;
-        let rel_x = self.raycast_info.contact_point[0] - chassis_pos.x;
-        let rel_y = self.raycast_info.contact_point[1] - chassis_pos.y;
-        let rel_z = self.raycast_info.contact_point[2] - chassis_pos.z;
+        [
+            self.raycast_info.contact_point[0] - chassis_pos.x,
+            self.raycast_info.contact_point[1] - chassis_pos.y,
+            self.raycast_info.contact_point[2] - chassis_pos.z,
+        ]
+    }
+
+    fn contact_point_vels(&self, chassis: &RigidBody, rel: [Vec4; 3]) -> [Vec4; 3] {
+        let [rel_x, rel_y, rel_z] = rel;
 
         let avx = Vec4::splat(chassis.ang_vel.x);
         let avy = Vec4::splat(chassis.ang_vel.y);
@@ -62,41 +65,91 @@ impl VehicleRL {
         let cross_y = avz * rel_x - avx * rel_z;
         let cross_z = avx * rel_y - avy * rel_x;
 
-        let contact_vel_x = cross_x + chassis.lin_vel.x;
-        let contact_vel_y = cross_y + chassis.lin_vel.y;
-        let contact_vel_z = cross_z + chassis.lin_vel.z;
+        [
+            cross_x + chassis.lin_vel.x,
+            cross_y + chassis.lin_vel.y,
+            cross_z + chassis.lin_vel.z,
+        ]
+    }
+
+    fn calc_friction_impulses(
+        &mut self,
+        chassis: &RigidBody,
+        rel: [Vec4; 3],
+        contact_vel: [Vec4; 3],
+        time_step: f32,
+    ) {
+        const ROLLING_FRICTION_SCALE: f32 = 113.73963;
+        const FRICTION_SCALE: f32 = bullet_vehicle::FRICTION_SCALE;
+        debug_assert_eq!(chassis.mass / 3.0, FRICTION_SCALE);
+        let [rel_x, rel_y, rel_z] = rel;
+
+        let [contact_vel_x, contact_vel_y, contact_vel_z] = contact_vel;
 
         let [axle_x, axle_y, axle_z] = self.axle_dir;
-        let rel_vel = contact_vel_y * axle_x - contact_vel_x * axle_y + contact_vel_z * axle_z;
+        let axle_len = (axle_x * axle_x + axle_y * axle_y + axle_z * axle_z)
+            .sqrt()
+            .max(Vec4::splat(1e-8));
+        let (axle_x, axle_y, axle_z) = (axle_x / axle_len, axle_y / axle_len, axle_z / axle_len);
+        let (mut fwd_x, mut fwd_y) = (-axle_y, axle_x);
+        let fwd_z = Vec4::ZERO;
+        let fwd_len = (fwd_x * fwd_x + fwd_y * fwd_y)
+            .sqrt()
+            .max(Vec4::splat(1e-8));
+        fwd_x /= fwd_len;
+        fwd_y /= fwd_len;
 
-        let side_impulse =
-            resolve_single_bilateral(chassis, rel_x, rel_y, rel_z, axle_x, axle_y, axle_z);
+        let rel_vel = contact_vel_x * fwd_x + contact_vel_y * fwd_y + contact_vel_z * fwd_z;
+
+        let side_impulse = resolve_single_bilateral(
+            chassis,
+            rel_x,
+            rel_y,
+            rel_z,
+            contact_vel_x,
+            contact_vel_y,
+            contact_vel_z,
+            axle_x,
+            axle_y,
+            axle_z,
+        );
 
         let rolling_friction = if self.engine_force == 0.0 {
-            let brake = Vec4::splat(self.brake);
-            (rel_vel * ROLLING_FRICTION_SCALE).clamp(-brake, brake)
+            if self.brake == 0.0 {
+                Vec4::ZERO
+            } else {
+                let mut rel_vel = rel_vel;
+                if time_step > 1.0 / 80.0 {
+                    let threshold = 0.8 - (1.0 / (time_step * 150.0));
+                    rel_vel = Vec4::select(
+                        rel_vel.abs().cmplt(Vec4::splat(threshold)),
+                        Vec4::ZERO,
+                        rel_vel,
+                    );
+                }
+
+                (-rel_vel * ROLLING_FRICTION_SCALE)
+                    .clamp(-Vec4::splat(self.brake), Vec4::splat(self.brake))
+            }
         } else {
-            Vec4::splat(self.engine_force / friction_scale)
+            Vec4::splat(-self.engine_force / FRICTION_SCALE)
         };
 
-        let rf = -rolling_friction * self.long_friction;
-        let si = side_impulse * self.lat_friction;
+        let total_x = fwd_x * rolling_friction * self.long_friction
+            + axle_x * side_impulse * self.lat_friction;
+        let total_y = fwd_y * rolling_friction * self.long_friction
+            + axle_y * side_impulse * self.lat_friction;
+        let total_z = axle_z * side_impulse * self.lat_friction;
 
-        let total_x = axle_x * si - axle_y * rf;
-        let total_y = axle_x * rf + axle_y * si;
-        let total_z = axle_z * rf + axle_z * si;
-
-        let scale = Vec4::splat(friction_scale);
+        let scale = Vec4::splat(FRICTION_SCALE);
         self.impulse[0] = total_x * scale;
         self.impulse[1] = total_y * scale;
         self.impulse[2] = total_z * scale;
     }
 
-    fn apply_friction_impulses(&self, cb: &mut RigidBody, time_step: f32) {
+    fn apply_friction_impulses(&self, cb: &mut RigidBody, rel: [Vec4; 3], time_step: f32) {
         let trans = cb.get_world_trans();
-        let rel_x = self.raycast_info.contact_point[0] - trans.translation.x;
-        let rel_y = self.raycast_info.contact_point[1] - trans.translation.y;
-        let rel_z = self.raycast_info.contact_point[2] - trans.translation.z;
+        let [rel_x, rel_y, rel_z] = rel;
 
         let up_x = Vec4::splat(trans.matrix3.z_axis.x);
         let up_y = Vec4::splat(trans.matrix3.z_axis.y);
@@ -144,7 +197,6 @@ impl VehicleRL {
 
         let suspension_length = (hard_z - contact_z) - self.wheel_radius;
 
-        // Full suspension compression is allowed: only the extension is clamped.
         let max_suspension_len = self.suspension_rest_length_1 + Vec4::splat(SUSPENSION_TRAVEL);
         self.suspension_length = suspension_length.min(max_suspension_len);
 
@@ -178,18 +230,16 @@ impl VehicleRL {
         self.raycast_info.hard_point = [hard_x, hard_y, hard_z];
         self.raycast_info.wheel_direction = -basis_z;
 
+        let front_axle = self.steering_orn[0] * chassis_trans.matrix3.y_axis;
         let axle_dirs = [
-            self.steering_orn[0] * chassis_trans.matrix3.y_axis,
-            self.steering_orn[1] * chassis_trans.matrix3.y_axis,
+            front_axle,
+            front_axle,
             chassis_trans.matrix3.y_axis,
             chassis_trans.matrix3.y_axis,
         ];
         self.axle_dir = vec_to_simd(axle_dirs);
     }
 
-    /// Refresh friction curves against THIS tick's fresh contact before the
-    /// impulses are computed - consuming the previous grounded tick's values
-    /// left first-touchdown ticks with stale (full-strength) friction.
     fn refresh_friction_curves(
         &mut self,
         chassis: &RigidBody,
@@ -202,8 +252,6 @@ impl VehicleRL {
 
         let [lat_dir_x, lat_dir_y, lat_dir_z] = self.axle_dir;
 
-        // Friction-curve velocity is measured at the hard point (wheel mount),
-        // not the contact point.
         let wheel_delta_x = self.raycast_info.hard_point[0] - chassis_pos.x;
         let wheel_delta_y = self.raycast_info.hard_point[1] - chassis_pos.y;
         let wheel_delta_z = self.raycast_info.hard_point[2] - chassis_pos.z;
@@ -239,12 +287,9 @@ impl VehicleRL {
         let mut long_friction = Vec4::ONE;
 
         if handbrake_val != 0.0 {
-            let mut handbrake_lat_friction = [0.0; 4];
-            for i in 0..NUM_WHEELS {
-                handbrake_lat_friction[i] =
-                    curves::HANDBRAKE_LAT_FRICTION_FACTOR.get_output(friction_curve_input[i]);
-            }
-            lat_friction *= 1.0 + (Vec4::from_array(handbrake_lat_friction) - 1.0) * handbrake_val;
+            // HANDBRAKE_LAT_FRICTION_FACTOR is a single point (0, 0.1), so its
+            // output is always 0.1 regardless of input.
+            lat_friction *= 1.0 - 0.9 * handbrake_val;
 
             let mut handbrake_long_friction = [0.0; 4];
             for i in 0..NUM_WHEELS {
@@ -256,21 +301,14 @@ impl VehicleRL {
         }
 
         if real_throttle == 0.0 {
-            // Contact is not sticky
-            let non_sticky_scale = curves::NON_STICKY_FRICTION_FACTOR.get_output(1.0);
-            lat_friction *= Vec4::splat(non_sticky_scale);
-            long_friction *= Vec4::splat(non_sticky_scale);
+            lat_friction *= Vec4::splat(curves::NON_STICKY_SCALE);
+            long_friction *= Vec4::splat(curves::NON_STICKY_SCALE);
         }
 
         self.lat_friction = lat_friction;
         self.long_friction = long_friction;
     }
 
-    /// Runs the full bullet vehicle update for this tick:
-    /// wheel transforms, raycasts, friction curve refresh, friction impulses,
-    /// and suspension.
-    ///
-    /// Must be called before the physics integration step.
     pub fn update(
         &mut self,
         chassis: &mut RigidBody,
@@ -289,19 +327,20 @@ impl VehicleRL {
 
         self.refresh_friction_curves(chassis, handbrake_val, real_throttle);
 
-        self.calc_friction_impulses(chassis, chassis.mass / 3.0);
+        let contact_rel = self.contact_rel_pos(chassis);
+        let contact_vel = self.contact_point_vels(chassis, contact_rel);
 
-        self.update_suspension(chassis, time_step);
+        self.update_suspension(chassis, contact_rel[0], contact_rel[1], time_step);
+
+        self.calc_friction_impulses(chassis, contact_rel, contact_vel, time_step);
 
         // note: all suspension MUST be updated before impulses are applied
-        self.apply_friction_impulses(chassis, time_step);
+        self.apply_friction_impulses(chassis, contact_rel, time_step);
 
-        // The sim only raycasts against an infinite static plane, so any
-        // update implies world contact.
         self.had_world_contact = true;
     }
 
-    fn update_suspension(&self, cb: &mut RigidBody, delta_time: f32) {
+    fn update_suspension(&self, cb: &mut RigidBody, rel_x: Vec4, rel_y: Vec4, delta_time: f32) {
         const SUSPENSION_FORCE_SCALE: Vec4 = Vec4::new(
             bullet_vehicle::SUSPENSION_FORCE_SCALE_FRONT,
             bullet_vehicle::SUSPENSION_FORCE_SCALE_FRONT,
@@ -323,10 +362,6 @@ impl VehicleRL {
         let suspension_force =
             (force - damping_vel_scale * self.suspension_relative_vel) * SUSPENSION_FORCE_SCALE;
         let suspension_force = suspension_force.max(Vec4::ZERO) * delta_time;
-
-        let trans = cb.get_world_trans();
-        let rel_x = self.raycast_info.contact_point[0] - trans.translation.x;
-        let rel_y = self.raycast_info.contact_point[1] - trans.translation.y;
 
         let total_force =
             suspension_force.x + suspension_force.y + suspension_force.z + suspension_force.w;

@@ -16,8 +16,6 @@ pub struct Tree {
 }
 
 impl Tree {
-    // SAH construction is only exercised by the unit tests below;
-    // runtime meshes use `build_bullet`.
     #[allow(dead_code)]
     const SAH_BINS: usize = 4;
     const TRAVERSAL_STACK_SIZE: usize = 128;
@@ -263,9 +261,10 @@ impl Tree {
 
             let node = &self.wide_nodes[work.branch_idx()];
             let mask = node.intersection_mask(aabb);
-            for lane in (0..node.child_count as usize).rev() {
+            let mut lane = usize::from(node.child_count);
+            while lane > 0 {
+                lane -= 1;
                 if mask & (1 << lane) != 0 {
-                    std::hint::cold_path();
                     debug_assert!(stack_len < Self::TRAVERSAL_STACK_SIZE);
                     stack[stack_len].write(node.children[lane]);
                     stack_len += 1;
@@ -282,7 +281,6 @@ struct BinaryTree {
 }
 
 impl BinaryTree {
-    // SAH construction is only exercised by the unit tests below.
     #[allow(dead_code)]
     fn build(aabb: Aabb, leaf_nodes: &mut [Node]) -> Self {
         assert!(!leaf_nodes.is_empty());
@@ -474,30 +472,31 @@ impl WideNode {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-struct WideChild(usize);
+struct WideChild(u32);
 
 impl WideChild {
-    const LEAF_BIT: usize = 1 << (usize::BITS - 1);
+    const LEAF_BIT: u32 = 1 << (u32::BITS - 1);
 
     const fn leaf(storage_idx: usize) -> Self {
-        assert!(storage_idx < Self::LEAF_BIT);
-        Self(Self::LEAF_BIT | storage_idx)
+        assert!(storage_idx < Self::LEAF_BIT as usize);
+        Self(Self::LEAF_BIT | storage_idx as u32)
     }
 
     const fn branch(branch_idx: usize) -> Self {
-        Self(branch_idx)
+        assert!(branch_idx < Self::LEAF_BIT as usize);
+        Self(branch_idx as u32)
     }
 
     const fn leaf_idx(self) -> Option<usize> {
         if self.0 & Self::LEAF_BIT != 0 {
-            Some(self.0 & !Self::LEAF_BIT)
+            Some((self.0 & !Self::LEAF_BIT) as usize)
         } else {
             None
         }
     }
 
     const fn branch_idx(self) -> usize {
-        self.0
+        self.0 as usize
     }
 }
 

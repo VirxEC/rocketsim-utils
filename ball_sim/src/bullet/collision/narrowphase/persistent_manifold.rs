@@ -4,10 +4,7 @@ use glam::{Vec3A, Vec4};
 use super::manifold_point::ManifoldPoint;
 use crate::{
     ArenaContactTracker,
-    bullet::{
-        dynamics::{rigid_body::RigidBody, sphere_rigid_body::SphereRigidBody},
-        linear_math::plane_space_1,
-    },
+    bullet::dynamics::{rigid_body::RigidBody, sphere_rigid_body::SphereRigidBody},
 };
 
 pub const CONTACT_BREAKING_THRESHOLD: f32 = 0.02;
@@ -27,37 +24,27 @@ pub fn pair_key(body_a_idx: usize, body_b_idx: usize) -> u64 {
 #[derive(Clone, Debug)]
 pub struct PersistentManifold {
     pub point_cache: ArrayVec<ManifoldPoint, MANIFOLD_CACHE_SIZE>,
-    pub(crate) most_recently_evicted_point: Option<ManifoldPoint>,
     pub body0_idx: usize,
     pub body1_idx: usize,
     pub pair_key: u64,
     pub contact_breaking_threshold: f32,
     pub contact_processing_threshold: f32,
+    contact_breaking_threshold_sq: f32,
 }
 
 impl PersistentManifold {
     pub fn new(contact_breaking_threshold: f32) -> Self {
         Self {
             contact_breaking_threshold,
-            // Upstream takes the min of the bodies' thresholds; ball_sim
-            // bodies carry none, and upstream defaults to `f32::MAX`.
             contact_processing_threshold: f32::MAX,
+            contact_breaking_threshold_sq: contact_breaking_threshold * contact_breaking_threshold,
             point_cache: ArrayVec::new(),
-            most_recently_evicted_point: None,
-            // Stamped by `CollisionDispatcher::insert_persistent_manifold`;
-            // `usize::MAX`/`u64::MAX` marks an unstamped manifold.
-            // (Upstream builds these from the body pair directly, but
-            // ball_sim bodies carry no pair indices, so the dispatcher
-            // assigns them at insert time.)
             body0_idx: usize::MAX,
             body1_idx: usize::MAX,
             pair_key: u64::MAX,
         }
     }
 
-    /// Cached breaking threshold for this manifold's pair.
-    /// (Upstream caches this per body; ball_sim shapes expose no such
-    /// API, so the threshold is captured once at manifold creation.)
     #[inline]
     pub const fn get_contact_breaking_threshold(&self) -> f32 {
         self.contact_breaking_threshold
@@ -180,7 +167,7 @@ impl PersistentManifold {
     }
 
     fn get_cache_entry(&self, new_contact: &ManifoldPoint) -> Option<usize> {
-        let threshold_sq = self.contact_breaking_threshold * self.contact_breaking_threshold;
+        let threshold_sq = self.contact_breaking_threshold_sq;
         let mut shortest_dist = threshold_sq;
         let mut nearest_point: Option<usize> = None;
         for (index, contact) in self.point_cache.iter().enumerate() {
@@ -193,7 +180,9 @@ impl PersistentManifold {
         nearest_point
     }
 
-    fn replace_contact_point(&mut self, index: usize, contact: ManifoldPoint) {
+    fn replace_contact_point(&mut self, index: usize, mut contact: ManifoldPoint) {
+        let old_contact = self.point_cache[index];
+        contact.applied_impulse = old_contact.applied_impulse;
         self.point_cache[index] = contact;
     }
 
@@ -201,7 +190,6 @@ impl PersistentManifold {
         let num_points = self.point_cache.len();
         if num_points == MANIFOLD_CACHE_SIZE {
             let idx = self.sort_cached_points(&contact);
-            self.most_recently_evicted_point = Some(self.point_cache[idx]);
             self.point_cache[idx] = contact;
             idx
         } else {
@@ -237,8 +225,6 @@ impl PersistentManifold {
 
         new_pt.combined_friction = Self::calculate_combined_friction(body0, body1);
         new_pt.combined_restitution = Self::calculate_combined_restitution(body0, body1);
-
-        new_pt.lateral_friction_dir_1 = plane_space_1(new_pt.normal_world_on_b);
 
         let insert_idx = self.add_contact_without_callback(new_pt);
 
@@ -283,8 +269,7 @@ impl PersistentManifold {
                 .dot(manifold_point.normal_world_on_b);
         }
 
-        let contact_breaking_threshold_sq =
-            self.contact_breaking_threshold * self.contact_breaking_threshold;
+        let contact_breaking_threshold_sq = self.contact_breaking_threshold_sq;
 
         for i in (0..self.point_cache.len()).rev() {
             let point = self.point_cache[i];

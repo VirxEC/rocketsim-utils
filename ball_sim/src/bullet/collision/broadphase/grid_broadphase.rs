@@ -1,9 +1,7 @@
 use std::iter::repeat_with;
 
-use arrayvec::ArrayVec;
 use glam::{IVec3, USizeVec3, Vec3A};
 
-use super::overlapping_pair_cache::OverlappingPairCache;
 use crate::{
     ArenaContactTracker,
     bullet::{
@@ -18,21 +16,20 @@ use crate::{
 
 #[derive(Clone, Copy, Debug)]
 pub struct GridBroadphaseProxy {
-    /// The index of the client `RigidBody` in `CollisionWorld`
     pub client_obj_idx: usize,
     pub aabb: Aabb,
     cell_idx: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct GridCell {
-    static_handles: ArrayVec<usize, 4>,
+    static_handles: Vec<usize>,
 }
 
 impl GridCell {
     fn new() -> Self {
         Self {
-            static_handles: ArrayVec::new(),
+            static_handles: Vec::new(),
         }
     }
 }
@@ -78,26 +75,22 @@ impl CellGrid {
         let min = self.get_cell_indices(proxy.aabb.min.max(self.min_pos));
         let max = self.get_cell_indices(proxy.aabb.max.min(self.max_pos));
 
+        // Goal components carry a body translation
         let tri_mesh_shape = match col_obj.get_collision_shape() {
-            CollisionShapes::TriangleMesh(mesh) => Some(mesh.as_ref()),
+            CollisionShapes::TriangleMesh(mesh) => Some((mesh.as_ref(), col_obj.get_world_trans())),
             CollisionShapes::StaticPlane(_) => None,
         };
-        // Mesh BVHs hold local triangles. Goal components carry a body
-        // translation, so test world grid cells in mesh-local space.
-        // (Translation-only bodies: local = world - translation.)
-        let mesh_trans = col_obj.get_world_trans();
 
         for i in min.x..=max.x {
             for j in min.y..=max.y {
                 for k in min.z..=max.z {
-                    if let Some(mesh_interface) = tri_mesh_shape {
+                    if let Some((mesh_interface, pos)) = tri_mesh_shape {
                         let cell_min = self.get_cell_min_pos(USizeVec3::new(i, j, k));
-                        let cell_aabb = Aabb::new(
-                            cell_min - mesh_trans,
-                            cell_min + Vec3A::splat(self.cell_size) - mesh_trans,
-                        );
+                        let cell_aabb =
+                            Aabb::new(cell_min, cell_min + Vec3A::splat(self.cell_size));
 
-                        if !mesh_interface.check_overlap_with(&cell_aabb) {
+                        let local_cell = cell_aabb - pos;
+                        if !mesh_interface.check_overlap_with(&local_cell) {
                             continue;
                         }
                     }
@@ -135,7 +128,6 @@ impl CellGrid {
 pub struct GridBroadphase {
     cell_grid: CellGrid,
     handles: Vec<GridBroadphaseProxy>,
-    pair_cache: OverlappingPairCache,
 }
 
 impl GridBroadphase {
@@ -159,7 +151,6 @@ impl GridBroadphase {
                 cells,
             },
             handles: Vec::with_capacity(32),
-            pair_cache: OverlappingPairCache::default(),
         }
     }
 
@@ -213,20 +204,6 @@ impl GridBroadphase {
         new_handle_idx
     }
 
-    pub fn calculate_overlapping_pairs(&mut self) {
-        debug_assert!(self.pair_cache.is_empty());
-
-        let proxy = &self.handles[0];
-        let cell = &self.cell_grid.cells[proxy.cell_idx];
-        for &other_proxy_idx in &cell.static_handles {
-            let other_proxy = &self.handles[other_proxy_idx];
-
-            if proxy.aabb.intersects(&other_proxy.aabb) {
-                self.pair_cache.add_overlapping_pair(other_proxy_idx);
-            }
-        }
-    }
-
     #[inline]
     pub fn process_all_overlapping_pairs(
         &mut self,
@@ -235,12 +212,21 @@ impl GridBroadphase {
         dispatcher: &mut CollisionDispatcher,
         contact_added_callback: &mut ArenaContactTracker,
     ) {
-        self.pair_cache.process_all_overlapping_pairs(
-            ball_obj,
-            collision_objs,
-            dispatcher,
-            &self.handles,
-            contact_added_callback,
-        );
+        unsafe {
+            let proxy = self.handles.get_unchecked(0);
+            let cell = self.cell_grid.cells.get_unchecked(proxy.cell_idx);
+            for &other_proxy_idx in &cell.static_handles {
+                let other_proxy = self.handles.get_unchecked(other_proxy_idx);
+
+                if proxy.aabb.intersects(&other_proxy.aabb) {
+                    dispatcher.near_callback(
+                        ball_obj,
+                        collision_objs,
+                        other_proxy,
+                        contact_added_callback,
+                    );
+                }
+            }
+        }
     }
 }

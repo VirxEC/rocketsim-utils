@@ -14,7 +14,7 @@ rustc-hash = "2.1.2"
 [dev-dependencies]
 indicatif = "0.18.4"
 rand = "0.10.0"
-rocketsim = { git = "https://github.com/ZealanL/RocketSim.git", branch = "v3-rust", default-features = false }
+rocketsim = "0.1"
 
 [lints]
 workspace = true

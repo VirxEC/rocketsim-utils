@@ -38,12 +38,15 @@ impl SphereShape {
         }
     }
 
-    pub fn calculate_local_inertia(&self, mass: f32) -> Vec3A {
-        Vec3A::splat(0.4 * mass * self.get_margin() * self.get_margin())
+    pub fn get_aabb_covering(&self, center1: Vec3A, center2: Vec3A) -> Aabb {
+        Aabb {
+            min: center1.min(center2) - self.extent,
+            max: center1.max(center2) + self.extent,
+        }
     }
 
-    pub fn local_get_supporting_vertex(&self, vec: Vec3A) -> Vec3A {
-        self.get_margin() * vec.normalize()
+    pub fn calculate_local_inertia(&self, mass: f32) -> Vec3A {
+        Vec3A::splat(0.4 * mass * self.get_margin() * self.get_margin())
     }
 
     #[inline]

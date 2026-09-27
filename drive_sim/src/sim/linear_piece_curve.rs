@@ -14,7 +14,6 @@ pub struct LinearPieceCurve<const N: usize> {
 }
 
 impl<const N: usize> LinearPieceCurve<N> {
-    /// A mapping of `(x, y)` pairs that make up the continuous linear piecewise function
     pub const fn new(value_mappings: [(f32, f32); N]) -> Self {
         let mut curve = [LinearPiece {
             base_x: 0.0,
@@ -46,24 +45,24 @@ impl<const N: usize> LinearPieceCurve<N> {
         Self { curve }
     }
 
-    /// Returns the output of the curve
-    ///
     /// # Arguments
     ///
     /// * `input` - The input to the curve
-    pub fn get_output(&self, input: f32) -> f32 {
-        debug_assert!(N != 0);
-
-        let first_val_pair = self.curve[0];
-        if input <= first_val_pair.max_x {
-            return first_val_pair.max_y;
+    pub const fn get_output(&self, input: f32) -> f32 {
+        if input <= self.curve[0].max_x {
+            return self.curve[0].max_y;
         }
 
-        let Some(pair) = self.curve.iter().skip(1).find(|pair| pair.max_x > input) else {
-            return self.curve[N - 1].max_y;
-        };
+        let mut i = 1;
+        while i < N {
+            let pair = self.curve[i];
+            if pair.max_x > input {
+                let interp_frac = (input - pair.base_x) / pair.x_diff;
+                return pair.y_diff * interp_frac + pair.base_y;
+            }
+            i += 1;
+        }
 
-        let interp_frac = (input - pair.base_x) / pair.x_diff;
-        pair.y_diff * interp_frac + pair.base_y
+        self.curve[N - 1].max_y
     }
 }

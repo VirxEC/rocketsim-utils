@@ -63,6 +63,8 @@ pub mod bullet_vehicle {
     pub const WHEELS_DAMPING_RELAXATION: f32 = 40.0;
     pub const MAX_SUSPENSION_TRAVEL: f32 = 12.0;
     pub const SUSPENSION_SUBTRACTION: f32 = 0.05;
+    /// Precomputed `car::MASS_BT / 3.0`; chassis mass never changes after construction.
+    pub const FRICTION_SCALE: f32 = super::car::MASS_BT / 3.0;
 }
 
 pub mod curves {
@@ -83,6 +85,7 @@ pub mod curves {
     pub const LAT_FRICTION: LinearPieceCurve<2> = LinearPieceCurve::new([(0., 1.0), (1., 0.2)]);
     pub const NON_STICKY_FRICTION_FACTOR: LinearPieceCurve<3> =
         LinearPieceCurve::new([(0., 0.1), (0.7075, 0.5), (1., 1.0)]);
+    pub const NON_STICKY_SCALE: f32 = NON_STICKY_FRICTION_FACTOR.get_output(1.0);
     pub const HANDBRAKE_LAT_FRICTION_FACTOR: LinearPieceCurve<1> =
         LinearPieceCurve::new([(0., 0.1)]);
     pub const HANDBRAKE_LONG_FRICTION_FACTOR: LinearPieceCurve<2> =

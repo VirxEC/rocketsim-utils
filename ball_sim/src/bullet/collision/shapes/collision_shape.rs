@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use glam::Vec3A;
+
 use super::{bvh_triangle_mesh_shape::BvhTriangleMeshShape, static_plane_shape::StaticPlaneShape};
 use crate::shared::Aabb;
-use glam::Vec3A;
 
 #[derive(Clone)]
 pub enum CollisionShapes {
