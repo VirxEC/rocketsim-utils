@@ -9,6 +9,25 @@ use crate::{
     consts::{BT_TO_UU, UU_TO_BT, car as car_consts},
 };
 
+/// Asymmetric 8-bit input quantization: negatives scale by 128, positives by 127.
+fn quantize_air_input(x: f32) -> f32 {
+    let clamped = x.clamp(-1.0, 1.0);
+    let y = if clamped < 0.0 {
+        (clamped * 128.0).max(-128.0)
+    } else {
+        (clamped * 127.0).min(127.0)
+    };
+    let w = ((y + 128.0) + (y + 128.0)) + 0.5;
+    let eax = w.round_ties_even() as i32;
+    let byte = ((eax >> 1) & 0xFF) as u8;
+    let s = (byte as f32) - 128.0;
+    if byte < 0x80 {
+        s * (1.0 / 128.0)
+    } else {
+        s / 127.0
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Car {
     config: CarBodyConfig,
@@ -76,6 +95,7 @@ impl Car {
             if rel_dodge_torque.y != 0.0
                 && self.state.controls.pitch != 0.0
                 && rel_dodge_torque.y.signum() == self.state.controls.pitch.signum()
+                && prev_flip_time >= car_consts::flip::PITCH_CANCEL_GATE_MIN_TIME
             {
                 pitch_scale = 1.0 - self.state.controls.pitch.abs().min(1.0);
             }
@@ -91,11 +111,11 @@ impl Car {
         }
 
         {
+            let pitch_input = quantize_air_input(self.state.controls.pitch);
+            let yaw_input = quantize_air_input(self.state.controls.yaw);
+            let roll_input = quantize_air_input(self.state.controls.roll);
             let mut pitch_torque_scale = 1.0;
-            let torque = if self.state.controls.pitch != 0.0
-                || self.state.controls.yaw != 0.0
-                || self.state.controls.roll != 0.0
-            {
+            let torque = if pitch_input != 0.0 || yaw_input != 0.0 || roll_input != 0.0 {
                 if prev_is_flipping
                     || self.state.has_flipped
                         && prev_flip_time < car_consts::flip::PITCHLOCK_EXTRA_TIME
@@ -103,12 +123,9 @@ impl Car {
                     pitch_torque_scale = 0.0;
                 }
 
-                self.state.controls.pitch
-                    * dir_pitch
-                    * pitch_torque_scale
-                    * car_consts::air_control::TORQUE.x
-                    + self.state.controls.yaw * dir_yaw * car_consts::air_control::TORQUE.y
-                    + self.state.controls.roll * dir_roll * car_consts::air_control::TORQUE.z
+                pitch_input * dir_pitch * pitch_torque_scale * car_consts::air_control::TORQUE.x
+                    + yaw_input * dir_yaw * car_consts::air_control::TORQUE.y
+                    + roll_input * dir_roll * car_consts::air_control::TORQUE.z
             } else {
                 Vec3A::ZERO
             };
@@ -117,10 +134,9 @@ impl Car {
 
             let damp_pitch = dir_pitch.dot(ang_vel)
                 * car_consts::air_control::DAMPING.x
-                * (1.0 - (self.state.controls.pitch * pitch_torque_scale).abs());
-            let damp_yaw = dir_yaw.dot(ang_vel)
-                * car_consts::air_control::DAMPING.y
-                * (1.0 - self.state.controls.yaw.abs());
+                * (1.0 - (pitch_input * pitch_torque_scale).abs());
+            let damp_yaw =
+                dir_yaw.dot(ang_vel) * car_consts::air_control::DAMPING.y * (1.0 - yaw_input.abs());
             let damp_roll = dir_roll.dot(ang_vel) * car_consts::air_control::DAMPING.z;
 
             let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;

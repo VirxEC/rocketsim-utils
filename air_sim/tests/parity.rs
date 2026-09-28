@@ -49,7 +49,7 @@ fn to_rs_state(state: &CarState) -> rs::CarState {
             ..rs::CarControls::DEFAULT
         },
         is_on_ground: false,
-        wheels_with_contact: [false; 4],
+        wheels_with_contact: [None; 4],
         has_jumped: state.has_jumped,
         has_double_jumped: state.has_double_jumped,
         has_flipped: state.has_flipped,

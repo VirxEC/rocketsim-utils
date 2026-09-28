@@ -40,7 +40,7 @@ fn initial_states(rot: Quat, ang_vel: Vec3A) -> (Car, rs::CarState) {
             ang_vel,
         },
         is_on_ground: false,
-        wheels_with_contact: [false; 4],
+        wheels_with_contact: [None; 4],
         ..rs::CarState::default()
     };
     (sim_car, rs_state)
@@ -105,7 +105,7 @@ fn run_scenario(
         assert_turn_close(&sim_car, &rs_state, tick);
 
         assert!(
-            !rs_state.is_on_ground && rs_state.wheels_with_contact == [false; 4],
+            !rs_state.is_on_ground && rs_state.wheels_with_contact == [None; 4],
             "car left suspended flight at tick {tick}"
         );
     }
