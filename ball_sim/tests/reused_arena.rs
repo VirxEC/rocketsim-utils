@@ -56,7 +56,10 @@ fn varied_states() -> Vec<BallState> {
 }
 
 fn step_case(arena: &mut SimArena, start: BallState, steps: usize) -> PhysState {
+    // Planning pattern: teleport, then opt into fresh-arena matching.
+    // Plain `set_ball_state` preserves contacts for replay continuity.
     arena.set_ball_state(start);
+    arena.clear_persistent_manifolds();
     for _ in 0..steps {
         arena.step_tick();
     }
@@ -167,12 +170,14 @@ fn soccar_reused_matches_fresh_after_contact_then_teleport() {
             reused.num_persistent_manifolds() > 0,
             "warmup created no manifold {case_idx}"
         );
-        // Teleport to the target. This must clear stale contacts.
+        // Teleport to the target with the planning opt-in, which must
+        // drop stale contacts.
         reused.set_ball_state(*target);
+        reused.clear_persistent_manifolds();
         assert_eq!(
             reused.num_persistent_manifolds(),
             0,
-            "teleport kept stale manifolds {case_idx}"
+            "explicit clear kept stale manifolds {case_idx}"
         );
         for _ in 0..60 {
             reused.step_tick();

@@ -65,7 +65,10 @@ fn step_case(
     controls: CarControls,
     steps: usize,
 ) -> CarState {
+    // Planning pattern: teleport, then opt into fresh-arena matching.
+    // Plain `set_car_state` preserves contacts for replay continuity.
     arena.set_car_state(start);
+    arena.reset_car_transient_contacts();
     for i in 0..arena.num_boost_pads() {
         arena.set_boost_pad_state(
             i,

@@ -82,6 +82,16 @@ impl Car {
         self.state.controls = new_controls;
     }
 
+    /// Reset transient wheel contacts for planning reuse. Keeps config.
+    ///
+    /// Drops cached contacts and the sticky gate so the next tick behaves
+    /// like a fresh arena. Called via `Arena::reset_car_transient_contacts`;
+    /// replay following must NOT call it.
+    pub fn reset_transient_contacts(&mut self) {
+        self.bullet_vehicle.reset_transient_contacts();
+        self.sticky_gate_prev = false;
+    }
+
     pub fn set_state(&mut self, rb: &mut RigidBody, state: &CarState) {
         rb.lin_vel = state.phys.vel * UU_TO_BT;
         rb.ang_vel = state.phys.ang_vel;
@@ -91,8 +101,9 @@ impl Car {
         });
         rb.clear_accum_vels();
 
-        self.bullet_vehicle.reset_transient_contacts();
-        self.sticky_gate_prev = false;
+        // Hidden wheel contacts and the sticky gate carry over, matching live
+        // replay following. Planning reuse must opt into freshness explicitly
+        // via `Arena::reset_car_transient_contacts` (see `is_large_teleport`).
         self.state = *state;
     }
 

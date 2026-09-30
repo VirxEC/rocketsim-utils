@@ -281,9 +281,27 @@ impl Arena {
         &self.config.mutators
     }
 
+    /// Teleports the ball (position/velocity + mode state).
+    ///
+    /// Cached contacts carry over: mesh collision refreshes stale points on
+    /// the next tick via the contact breaking threshold, which keeps
+    /// per-tick replay corrections continuous.
+    ///
+    /// Planning reuse is different: a reused arena must match a fresh one,
+    /// so after teleporting to a far pose call
+    /// [`Arena::clear_persistent_manifolds`] (see `is_large_teleport` to tell
+    /// far planning jumps from small per-tick corrections).
     pub fn set_ball_state(&mut self, ball_state: BallState) {
         self.ball
             .set_state(self.bullet_world.ball_mut(), ball_state);
+    }
+
+    /// Explicitly drop cached collision contacts.
+    ///
+    /// Opt-in for planning code reusing one arena across far-apart poses that
+    /// needs fresh-arena matching. Normal per-tick replay corrections should
+    /// NOT call this; auto-culling preserves continuity there.
+    pub fn clear_persistent_manifolds(&mut self) {
         self.bullet_world.clear_persistent_manifolds();
     }
 

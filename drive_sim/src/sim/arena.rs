@@ -142,8 +142,21 @@ impl Arena {
     }
 
     pub fn set_car_state(&mut self, state: CarState) {
+        // Hidden wheel contacts and the sticky gate carry over, matching live
+        // replay following. Planning reuse must opt into freshness explicitly
+        // via `Arena::reset_car_transient_contacts` (see `is_large_teleport`
+        // to tell far planning jumps from small per-tick corrections).
         self.car
             .set_state(&mut self.bullet_world.collision_obj, &state);
+    }
+
+    /// Reset the car's transient wheel contacts for planning reuse. Keeps config.
+    ///
+    /// Drops cached contacts and the sticky gate so the next tick behaves
+    /// like a fresh arena. Replay following must NOT call this; it would
+    /// break contact continuity.
+    pub fn reset_car_transient_contacts(&mut self) {
+        self.car.reset_transient_contacts();
     }
 
     pub const fn set_car_controls(&mut self, controls: CarControls) {
