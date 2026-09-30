@@ -67,6 +67,7 @@ impl Ball {
 
         rb.set_lin_vel(state.phys.vel * UU_TO_BT);
         rb.set_ang_vel(state.phys.ang_vel);
+        rb.clear_accum_vels();
         self.state = state;
     }
 

@@ -89,7 +89,10 @@ impl Car {
             matrix3: state.phys.rot_mat,
             translation: state.phys.pos * UU_TO_BT,
         });
+        rb.clear_accum_vels();
 
+        self.bullet_vehicle.reset_transient_contacts();
+        self.sticky_gate_prev = false;
         self.state = *state;
     }
 

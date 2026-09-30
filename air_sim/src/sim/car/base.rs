@@ -75,6 +75,7 @@ impl Car {
 
         self.body.lin_vel = state.phys.vel * UU_TO_BT;
         self.body.ang_vel = state.phys.ang_vel;
+        self.body.clear_accum_vels();
 
         self.state = *state;
     }

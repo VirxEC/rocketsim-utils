@@ -45,6 +45,19 @@ pub struct VehicleRL {
 }
 
 impl VehicleRL {
+    /// Reset transient wheel contacts after a teleport. Keep config.
+    pub fn reset_transient_contacts(&mut self) {
+        let chassis_connection = self.chassis_connection_point_cs;
+        let suspension_rest = self.suspension_rest_length_1;
+        let wheel_radius = self.wheel_radius;
+        *self = Self {
+            chassis_connection_point_cs: chassis_connection,
+            suspension_rest_length_1: suspension_rest,
+            wheel_radius,
+            ..Default::default()
+        };
+    }
+
     fn contact_rel_pos(&self, chassis: &RigidBody) -> [Vec4; 3] {
         let chassis_pos = chassis.get_world_trans().translation;
         [

@@ -284,6 +284,14 @@ impl Arena {
     pub fn set_ball_state(&mut self, ball_state: BallState) {
         self.ball
             .set_state(self.bullet_world.ball_mut(), ball_state);
+        self.bullet_world.clear_persistent_manifolds();
+    }
+
+    /// Count cached contact manifolds for reuse diagnostics.
+    #[inline]
+    #[must_use]
+    pub fn num_persistent_manifolds(&self) -> usize {
+        self.bullet_world.num_persistent_manifolds()
     }
 
     #[must_use]
