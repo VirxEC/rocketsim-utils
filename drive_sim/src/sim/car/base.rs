@@ -112,7 +112,7 @@ impl Car {
         rb: &mut RigidBody,
         gravity: Vec3A,
         forward_speed_uu: f32,
-        real_throttle: f32,
+        raw_throttle: f32,
         tick_time: f32,
     ) {
         let handbrake_delta = if self.state.controls.handbrake {
@@ -123,6 +123,14 @@ impl Car {
         self.state.handbrake_val = (self.state.handbrake_val + handbrake_delta).clamp(0.0, 1.0);
 
         let mut real_brake = 0.0;
+
+        let all_wheels_contact = self.state.wheels_with_contact.iter().all(|&w| w);
+        let real_throttle =
+            if self.state.controls.boost && self.state.boost > 0.0 && all_wheels_contact {
+                1.0
+            } else {
+                raw_throttle
+            };
 
         let abs_forward_speed_uu = forward_speed_uu.abs();
         let mut engine_throttle = real_throttle;
@@ -175,8 +183,9 @@ impl Car {
         if self.sticky_gate_prev {
             const UPWARDS_DIR: Vec3A = Vec3A::Z;
 
+            // Sticky keeps raw throttle
             let full_stick =
-                real_throttle != 0.0 || abs_forward_speed_uu > drive_consts::STOPPING_FORWARD_VEL;
+                raw_throttle != 0.0 || abs_forward_speed_uu > drive_consts::STOPPING_FORWARD_VEL;
             let mut sticky_force_scale = 0.5;
             if full_stick {
                 sticky_force_scale += 1.0 - UPWARDS_DIR.z.abs();
@@ -254,13 +263,13 @@ impl Car {
         self.state.controls = self.state.controls.clamp();
         let forward_speed_uu = collision_world.collision_obj.get_forward_speed() * BT_TO_UU;
 
-        let real_throttle = self.state.controls.throttle;
+        let raw_throttle = self.state.controls.throttle;
 
         self.update_wheels(
             &mut collision_world.collision_obj,
             mutator_config.gravity * UU_TO_BT,
             forward_speed_uu,
-            real_throttle,
+            raw_throttle,
             tick_time,
         );
 
@@ -273,7 +282,7 @@ impl Car {
         let real_throttle_vehicle = if self.state.controls.boost && self.state.boost > 0.0 {
             1.0
         } else {
-            real_throttle
+            raw_throttle
         };
         self.bullet_vehicle.update(
             &mut collision_world.collision_obj,

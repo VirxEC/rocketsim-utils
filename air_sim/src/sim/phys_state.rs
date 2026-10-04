@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use glam::{Mat3A, Quat, Vec3A};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PhysState {
     pub pos: Vec3A,
     pub rot_mat: Mat3A,
