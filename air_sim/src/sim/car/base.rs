@@ -1,4 +1,4 @@
-use glam::{Affine3A, Vec3A};
+use glam::{Affine3A, IVec3, Vec3A};
 
 use crate::{
     CarBodyConfig, CarControls, CarState, MutatorConfig,
@@ -10,7 +10,27 @@ use crate::{
 };
 
 /// Asymmetric 8-bit input quantization: negatives scale by 128, positives by 127.
-fn quantize_air_input(x: f32) -> f32 {
+fn quantize_axis_inputs(ctrls: Vec3A) -> Vec3A {
+    const UPPER_BOUND: Vec3A = Vec3A::splat(128.0);
+    const LOWER_BOUND: Vec3A = Vec3A::splat(127.0);
+
+    let clamped = ctrls.clamp(Vec3A::NEG_ONE, Vec3A::ONE);
+    let scale = Vec3A::select(clamped.cmplt(Vec3A::ZERO), UPPER_BOUND, LOWER_BOUND);
+    let biased = clamped * scale + UPPER_BOUND;
+    let w = biased + biased + Vec3A::splat(0.5);
+    let byte = ((w.round().as_ivec3() >> 1i32) & IVec3::splat(0xFF)).as_vec3a();
+    let s = byte - UPPER_BOUND;
+
+    Vec3A::select(
+        s.cmplt(Vec3A::ZERO),
+        s * (1.0 / UPPER_BOUND),
+        s / LOWER_BOUND,
+    )
+}
+
+/// Single-axis form of [`quantize_axis_inputs`].
+#[must_use]
+fn quantize_axis_input(x: f32) -> f32 {
     let clamped = x.clamp(-1.0, 1.0);
     let y = if clamped < 0.0 {
         (clamped * 128.0).max(-128.0)
@@ -112,9 +132,8 @@ impl Car {
         }
 
         {
-            let pitch_input = quantize_air_input(self.state.controls.pitch);
-            let yaw_input = quantize_air_input(self.state.controls.yaw);
-            let roll_input = quantize_air_input(self.state.controls.roll);
+            let [pitch_input, yaw_input, roll_input] =
+                quantize_axis_inputs(self.state.controls.pyr()).to_array();
             let mut pitch_torque_scale = 1.0;
             let torque = if pitch_input != 0.0 || yaw_input != 0.0 || roll_input != 0.0 {
                 if prev_is_flipping
@@ -152,7 +171,7 @@ impl Car {
         let throttle_scale = if self.state.controls.boost || self.state.is_boosting {
             1.0
         } else {
-            self.state.controls.throttle
+            quantize_axis_input(self.state.controls.throttle)
         };
         if throttle_scale != 0.0 {
             let throttle_force = forward_dir
@@ -203,11 +222,10 @@ impl Car {
                     self.state.is_flipping = true;
 
                     let forward_speed_ratio = forward_speed_uu.abs() / car_consts::MAX_SPEED;
-                    let mut dodge_dir = Vec3A::new(
-                        -self.state.controls.pitch,
-                        self.state.controls.yaw + self.state.controls.roll,
-                        0.0,
-                    );
+
+                    let [pitch_input, yaw_input, roll_input] =
+                        quantize_axis_inputs(self.state.controls.pyr()).to_array();
+                    let mut dodge_dir = Vec3A::new(-pitch_input, yaw_input + roll_input, 0.0);
 
                     if dodge_dir.x.abs() < 0.1 && dodge_dir.y.abs() < 0.1 {
                         dodge_dir = Vec3A::ZERO;

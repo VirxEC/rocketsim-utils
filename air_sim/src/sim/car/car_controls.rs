@@ -1,4 +1,4 @@
-use glam::Vec3;
+use glam::Vec3A;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CarControls {
@@ -78,8 +78,8 @@ impl CarControls {
     }
 
     #[must_use]
-    pub const fn pyr(self) -> Vec3 {
-        Vec3::new(self.pitch, self.yaw, self.roll)
+    pub const fn pyr(self) -> Vec3A {
+        Vec3A::new(self.pitch, self.yaw, self.roll)
     }
 
     #[must_use]
@@ -107,8 +107,8 @@ impl CarControls {
     }
 
     #[must_use]
-    pub const fn with_pyr(mut self, pyr: Vec3) -> Self {
-        (self.pitch, self.yaw, self.roll) = (pyr.x, pyr.y, pyr.z);
+    pub const fn with_pyr(mut self, pyr: Vec3A) -> Self {
+        [self.pitch, self.yaw, self.roll] = pyr.to_array();
         self
     }
 

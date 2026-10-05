@@ -1,4 +1,4 @@
-use glam::{Affine3A, Quat, Vec3A};
+use glam::{Affine3A, IVec3, Quat, Vec3A};
 
 use crate::{
     CarBodyConfig, CarControls, CarState, MutatorConfig,
@@ -23,6 +23,45 @@ pub struct Car {
     pub bullet_vehicle: VehicleRL,
     pub state: CarState,
     sticky_gate_prev: bool,
+}
+
+/// Asymmetric 8-bit input quantization: negatives scale by 128, positives by 127.
+fn quantize_axis_inputs(ctrls: Vec3A) -> Vec3A {
+    const UPPER_BOUND: Vec3A = Vec3A::splat(128.0);
+    const LOWER_BOUND: Vec3A = Vec3A::splat(127.0);
+
+    let clamped = ctrls.clamp(Vec3A::NEG_ONE, Vec3A::ONE);
+    let scale = Vec3A::select(clamped.cmplt(Vec3A::ZERO), UPPER_BOUND, LOWER_BOUND);
+    let biased = clamped * scale + UPPER_BOUND;
+    let w = biased + biased + Vec3A::splat(0.5);
+    let byte = ((w.round().as_ivec3() >> 1i32) & IVec3::splat(0xFF)).as_vec3a();
+    let s = byte - UPPER_BOUND;
+
+    Vec3A::select(
+        s.cmplt(Vec3A::ZERO),
+        s * (1.0 / UPPER_BOUND),
+        s / LOWER_BOUND,
+    )
+}
+
+/// Single-axis form of [`quantize_axis_inputs`].
+#[must_use]
+fn quantize_axis_input(x: f32) -> f32 {
+    let clamped = x.clamp(-1.0, 1.0);
+    let y = if clamped < 0.0 {
+        (clamped * 128.0).max(-128.0)
+    } else {
+        (clamped * 127.0).min(127.0)
+    };
+    let w = ((y + 128.0) + (y + 128.0)) + 0.5;
+    let eax = w.round_ties_even() as i32;
+    let byte = ((eax >> 1) & 0xFF) as u8;
+    let s = (byte as f32) - 128.0;
+    if byte < 0x80 {
+        s * (1.0 / 128.0)
+    } else {
+        s / 127.0
+    }
 }
 
 impl Car {
@@ -125,11 +164,14 @@ impl Car {
         let mut real_brake = 0.0;
 
         let all_wheels_contact = self.state.wheels_with_contact.iter().all(|&w| w);
+        let [proc_throttle, proc_steer, _] =
+            quantize_axis_inputs(Vec3A::new(raw_throttle, self.state.controls.steer, 0.0))
+                .to_array();
         let real_throttle =
             if self.state.controls.boost && self.state.boost > 0.0 && all_wheels_contact {
                 1.0
             } else {
-                raw_throttle
+                proc_throttle
             };
 
         let abs_forward_speed_uu = forward_speed_uu.abs();
@@ -145,9 +187,6 @@ impl Car {
                         engine_throttle = 0.0;
                     }
                 }
-            } else if self.state.controls.boost && self.state.boost > 0.0 {
-                engine_throttle = 1.0;
-                real_brake = 0.0;
             } else {
                 engine_throttle = 0.0;
                 real_brake = if abs_forward_speed_uu < drive_consts::STOPPING_FORWARD_VEL {
@@ -173,7 +212,7 @@ impl Car {
                 * self.state.handbrake_val;
         }
 
-        steer_angle *= self.state.controls.steer;
+        steer_angle *= proc_steer;
         let steering_orn =
             Quat::from_axis_angle_simd(rb.get_world_trans().matrix3.z_axis, steer_angle);
         self.bullet_vehicle.steering_orn[0] = steering_orn;
@@ -282,7 +321,7 @@ impl Car {
         let real_throttle_vehicle = if self.state.controls.boost && self.state.boost > 0.0 {
             1.0
         } else {
-            raw_throttle
+            quantize_axis_input(raw_throttle)
         };
         self.bullet_vehicle.update(
             &mut collision_world.collision_obj,
