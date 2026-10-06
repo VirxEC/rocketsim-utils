@@ -33,6 +33,7 @@ pub struct VehicleRL {
     pub chassis_connection_point_cs: [Vec4; 3],
     pub engine_force: f32,
     pub brake: f32,
+    pub suspension_force_scale: Vec4,
     pub suspension_rest_length_1: Vec4,
     pub axle_dir: [Vec4; 3],
     suspension_length: Vec4,
@@ -49,10 +50,12 @@ impl VehicleRL {
     pub fn reset_transient_contacts(&mut self) {
         let chassis_connection = self.chassis_connection_point_cs;
         let suspension_rest = self.suspension_rest_length_1;
+        let suspension_scale = self.suspension_force_scale;
         let wheel_radius = self.wheel_radius;
         *self = Self {
             chassis_connection_point_cs: chassis_connection,
             suspension_rest_length_1: suspension_rest,
+            suspension_force_scale: suspension_scale,
             wheel_radius,
             ..Default::default()
         };
@@ -354,12 +357,6 @@ impl VehicleRL {
     }
 
     fn update_suspension(&self, cb: &mut RigidBody, rel_x: Vec4, rel_y: Vec4, delta_time: f32) {
-        const SUSPENSION_FORCE_SCALE: Vec4 = Vec4::new(
-            bullet_vehicle::SUSPENSION_FORCE_SCALE_FRONT,
-            bullet_vehicle::SUSPENSION_FORCE_SCALE_FRONT,
-            bullet_vehicle::SUSPENSION_FORCE_SCALE_BACK,
-            bullet_vehicle::SUSPENSION_FORCE_SCALE_BACK,
-        );
         const COMPRESSION_DAMPING: Vec4 = Vec4::splat(bullet_vehicle::WHEELS_DAMPING_COMPRESSION);
         const RELAXATION_DAMPING: Vec4 = Vec4::splat(bullet_vehicle::WHEELS_DAMPING_RELAXATION);
 
@@ -372,8 +369,8 @@ impl VehicleRL {
             RELAXATION_DAMPING,
         );
 
-        let suspension_force =
-            (force - damping_vel_scale * self.suspension_relative_vel) * SUSPENSION_FORCE_SCALE;
+        let suspension_force = (force - damping_vel_scale * self.suspension_relative_vel)
+            * self.suspension_force_scale;
         let suspension_force = suspension_force.max(Vec4::ZERO) * delta_time;
 
         let total_force =

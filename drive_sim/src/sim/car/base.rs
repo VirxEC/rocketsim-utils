@@ -1,4 +1,4 @@
-use glam::{Affine3A, IVec3, Quat, Vec3A};
+use glam::{Affine3A, IVec3, Quat, Vec3A, Vec4};
 
 use crate::{
     CarBodyConfig, CarControls, CarState, MutatorConfig,
@@ -73,6 +73,12 @@ impl Car {
 
         let mut bullet_vehicle = VehicleRL::default();
 
+        bullet_vehicle.suspension_force_scale = Vec4::from_array(Self::suspension_strengths(
+            body.inv_mass,
+            config.front_wheels.connection_point_offset.x * UU_TO_BT,
+            config.back_wheels.connection_point_offset.x * UU_TO_BT,
+        ));
+
         for i in 0..NUM_WHEELS {
             let front = i < 2;
             let left = i % 2 == 0;
@@ -115,6 +121,28 @@ impl Car {
 
     pub const fn get_state(&self) -> &CarState {
         &self.state
+    }
+
+    /// Keep the target's `f32` operation order to preserve rounding.
+    /// Only negative axle distances use the equal split.
+    /// Zero and NaN use the normal path.
+    fn suspension_strengths(inv_mass: f32, front_x_bt: f32, rear_x_bt: f32) -> [f32; 4] {
+        let mass = 1.0 / inv_mass;
+        let front_dist = front_x_bt;
+        let rear_dist = -rear_x_bt;
+        if front_dist < 0.0 || rear_dist < 0.0 {
+            let half = mass * 0.5;
+            let quarter = half * 0.5;
+            [quarter, quarter, quarter, quarter]
+        } else {
+            let total = rear_dist + front_dist;
+            let front_frac = front_dist / total;
+            let front_axle = front_frac * mass;
+            let rear_axle = mass - front_axle;
+            let front_wheel = rear_axle * 0.5;
+            let rear_wheel = front_axle * 0.5;
+            [front_wheel, front_wheel, rear_wheel, rear_wheel]
+        }
     }
 
     pub const fn set_controls(&mut self, new_controls: CarControls) {
