@@ -137,6 +137,7 @@ impl Car {
             let mut pitch_torque_scale = 1.0;
             let torque = if pitch_input != 0.0 || yaw_input != 0.0 || roll_input != 0.0 {
                 if prev_is_flipping
+                    || self.state.is_flipping
                     || self.state.has_flipped
                         && prev_flip_time < car_consts::flip::PITCHLOCK_EXTRA_TIME
                 {
@@ -307,12 +308,6 @@ impl Car {
             } else {
                 self.tick_time
             };
-            if (car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
-                .contains(&flip_time_pre)
-                && (self.body.lin_vel.z < 0.0 || flip_time_pre < car_consts::flip::Z_DAMP_END)
-            {
-                self.body.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
-            }
         } else if self.state.has_flipped {
             self.state.flip_time += self.tick_time;
         }
@@ -375,7 +370,26 @@ impl Car {
         self.state.boost = self.state.boost.clamp(0.0, car_consts::boost::MAX);
     }
 
+    /// Apply ongoing-flip vertical damping before wheel updates.
+    /// Keep flip timers unchanged until the per-car update.
+    fn apply_flip_zdamp_prepass(&mut self) {
+        if !self.state.is_flipping {
+            return;
+        }
+
+        if !(car_consts::flip::Z_DAMP_START..=car_consts::flip::TORQUE_TIME)
+            .contains(&self.state.flip_time)
+        {
+            return;
+        }
+
+        if self.body.lin_vel.z < 0.0 || self.state.flip_time < car_consts::flip::Z_DAMP_END {
+            self.body.lin_vel.z *= 1.0 - car_consts::flip::Z_DAMP_120;
+        }
+    }
+
     pub(crate) fn pre_tick_update(&mut self, mutator_config: &MutatorConfig) {
+        self.apply_flip_zdamp_prepass();
         self.state.controls = self.state.controls.clamp();
         let forward_speed_uu = self.body.get_forward_speed() * BT_TO_UU;
         let jump_pressed = self.state.controls.jump && !self.state.prev_controls.jump;
