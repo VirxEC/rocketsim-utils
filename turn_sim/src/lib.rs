@@ -70,15 +70,14 @@ impl Car {
         let angle = ang_vel.length().min(ANGULAR_MOTION_THRESHOLD / dt);
 
         let half_angle_dt = 0.5 * angle * dt;
-        let (sin_half, cos_half) = half_angle_dt.sin_cos();
         let axis = ang_vel
             * if angle < 0.001 {
-                (1.0 - dt * dt * 2.0 * 0.020_833_334) * angle * half_angle_dt
+                0.5 * dt - dt * dt * dt * 0.020_833_334 * angle * angle
             } else {
-                sin_half / angle
+                half_angle_dt.sin() / angle
             };
 
-        let dorn = Quat::from_xyzw(axis.x, axis.y, axis.z, cos_half);
+        let dorn = Quat::from_vec4(axis.extend(half_angle_dt.cos()));
         (dorn * rot).normalize()
     }
 }

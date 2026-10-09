@@ -151,20 +151,14 @@ impl RigidBody {
         }
 
         let half_angle = angle * tick_time * 0.5;
-        let (axis, cos_half_angle) = if angle < 0.001 {
-            (
-                self.ang_vel
-                    * (0.5 * tick_time - tick_time * tick_time * tick_time * 0.020_833_334)
-                    * angle
-                    * angle,
-                half_angle.cos(),
-            )
-        } else {
-            let (sin_half_angle, cos_half_angle) = half_angle.sin_cos();
-            (self.ang_vel * (sin_half_angle / angle), cos_half_angle)
-        };
+        let axis = self.ang_vel
+            * if angle < 0.001 {
+                0.5 * tick_time - tick_time * tick_time * tick_time * 0.020_833_334 * angle * angle
+            } else {
+                half_angle.sin() / angle
+            };
 
-        let dorn = Quat::from_xyzw(axis.x, axis.y, axis.z, cos_half_angle);
+        let dorn = Quat::from_vec4(axis.extend(half_angle.cos()));
         self.quat_trans = (dorn * self.quat_trans).normalize();
         self.world_trans.matrix3 = Mat3A::from_quat(self.quat_trans);
 

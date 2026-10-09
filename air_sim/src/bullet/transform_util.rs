@@ -12,19 +12,13 @@ pub fn integrate_trans(rotation: &mut Quat, ang_vel: Vec3A, time_step: f32) {
     }
 
     let half_angle = angle * time_step * 0.5;
-    let (axis, cos_half_angle) = if angle < 0.001 {
-        (
-            ang_vel
-                * (0.5 * time_step - time_step * time_step * time_step * 0.020_833_334)
-                * angle
-                * angle,
-            half_angle.cos(),
-        )
-    } else {
-        let (sin_half_angle, cos_half_angle) = half_angle.sin_cos();
-        (ang_vel * (sin_half_angle / angle), cos_half_angle)
-    };
+    let axis = ang_vel
+        * if angle < 0.001 {
+            0.5 * time_step - time_step * time_step * time_step * 0.020_833_334 * angle * angle
+        } else {
+            half_angle.sin() / angle
+        };
 
-    let dorn = Quat::from_xyzw(axis.x, axis.y, axis.z, cos_half_angle);
+    let dorn = Quat::from_vec4(axis.extend(half_angle.cos()));
     *rotation = (dorn * *rotation).normalize();
 }

@@ -1,4 +1,4 @@
-use glam::{Affine3A, IVec3, Vec3A};
+use glam::{Affine3A, IVec3, Mat3A, Vec3A};
 
 use crate::{
     CarBodyConfig, CarControls, CarState, MutatorConfig,
@@ -101,14 +101,6 @@ impl Car {
     }
 
     fn update_air_torque(&mut self, prev_is_flipping: bool, prev_flip_time: f32) {
-        let forward_dir = self.state.get_forward_dir();
-        let right_dir = self.state.get_right_dir();
-        let up_dir = self.state.get_up_dir();
-
-        let dir_pitch = -right_dir;
-        let dir_yaw = up_dir;
-        let dir_roll = -forward_dir;
-
         if self.state.is_flipping && self.state.flip_rel_torque != Vec3A::ZERO {
             let mut rel_dodge_torque = self.state.flip_rel_torque;
 
@@ -132,35 +124,36 @@ impl Car {
         }
 
         {
-            let [pitch_input, yaw_input, roll_input] =
-                quantize_axis_inputs(self.state.controls.pyr()).to_array();
+            let inputs = quantize_axis_inputs(self.state.controls.pyr());
+
             let mut pitch_torque_scale = 1.0;
-            let torque = if pitch_input != 0.0 || yaw_input != 0.0 || roll_input != 0.0 {
-                if prev_is_flipping
+            if inputs != Vec3A::ZERO
+                && (prev_is_flipping
                     || self.state.is_flipping
                     || self.state.has_flipped
-                        && prev_flip_time < car_consts::flip::PITCHLOCK_EXTRA_TIME
-                {
-                    pitch_torque_scale = 0.0;
-                }
+                        && prev_flip_time < car_consts::flip::PITCHLOCK_EXTRA_TIME)
+            {
+                pitch_torque_scale = 0.0;
+            }
 
-                pitch_input * dir_pitch * pitch_torque_scale * car_consts::air_control::TORQUE.x
-                    + yaw_input * dir_yaw * car_consts::air_control::TORQUE.y
-                    + roll_input * dir_roll * car_consts::air_control::TORQUE.z
+            let dirs = Mat3A::from_cols(
+                -self.state.get_right_dir(),   // pitch
+                self.state.get_up_dir(),       // yaw
+                -self.state.get_forward_dir(), // roll
+            );
+
+            let scaled_inputs = inputs * Vec3A::new(pitch_torque_scale, 1.0, 1.0);
+            let torque = if inputs != Vec3A::ZERO {
+                dirs * (scaled_inputs * car_consts::air_control::TORQUE)
             } else {
                 Vec3A::ZERO
             };
 
-            let ang_vel = self.body.ang_vel;
-
-            let damp_pitch = dir_pitch.dot(ang_vel)
-                * car_consts::air_control::DAMPING.x
-                * (1.0 - (pitch_input * pitch_torque_scale).abs());
-            let damp_yaw =
-                dir_yaw.dot(ang_vel) * car_consts::air_control::DAMPING.y * (1.0 - yaw_input.abs());
-            let damp_roll = dir_roll.dot(ang_vel) * car_consts::air_control::DAMPING.z;
-
-            let damping = dir_yaw * damp_yaw + dir_pitch * damp_pitch + dir_roll * damp_roll;
+            let retain = (Vec3A::ONE - scaled_inputs.abs()).with_z(1.0);
+            let damping = dirs
+                * (dirs.mul_transpose_vec3a(self.state.phys.ang_vel)
+                    * car_consts::air_control::DAMPING
+                    * retain);
 
             let rb_torque =
                 (torque - damping) * car_consts::air_control::TORQUE_APPLY_SCALE * self.tick_time;
@@ -175,7 +168,7 @@ impl Car {
             quantize_axis_input(self.state.controls.throttle)
         };
         if throttle_scale != 0.0 {
-            let throttle_force = forward_dir
+            let throttle_force = self.state.get_forward_dir()
                 * throttle_scale
                 * car_consts::drive::THROTTLE_AIR_ACCEL
                 * UU_TO_BT
@@ -418,6 +411,9 @@ impl Car {
         self.body
             .limit_vels(car_consts::MAX_SPEED * UU_TO_BT, car_consts::MAX_ANG_SPEED);
         crate::bullet::quantize::quantize(&mut self.body);
+        // Sync the cached state after rigid-body limits.
+        self.state.phys.vel = self.body.lin_vel * BT_TO_UU;
+        self.state.phys.ang_vel = self.body.ang_vel;
 
         self.pre_tick_update(mutator_config);
 
