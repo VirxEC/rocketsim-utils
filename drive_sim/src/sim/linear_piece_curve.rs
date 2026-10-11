@@ -49,6 +49,11 @@ impl<const N: usize> LinearPieceCurve<N> {
     ///
     /// * `input` - The input to the curve
     pub const fn get_output(&self, input: f32) -> f32 {
+        // A single-point curve is constant: both clamp ends return its `y`.
+        if N == 1 {
+            return self.curve[0].max_y;
+        }
+
         if input <= self.curve[0].max_x {
             return self.curve[0].max_y;
         }
