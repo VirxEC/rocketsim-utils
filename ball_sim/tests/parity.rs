@@ -215,6 +215,46 @@ fn hoops_kickoff_launch_and_bounces() {
 }
 
 #[test]
+fn soccar_wall_ramp_double_contact_ordering() {
+    ensure_init();
+
+    // The ball reaches a wall/ramp two-contact pose around tick 305. The
+    // active manifold order decides the split-impulse result, so this guards
+    // the single-dynamic-body island sort.
+    let mut state = BallState::DEFAULT;
+    state.pos = Vec3A::new(-155.88708, -1905.4248, 962.59827);
+    state.vel = Vec3A::new(1703.1504, 638.97144, 551.3876);
+    state.ang_vel = Vec3A::new(-1.534662, -0.70417, -2.0518298);
+    assert_parity(GameMode::Soccar, state, 800);
+}
+
+#[test]
+fn soccar_high_speed_corner_contact_ordering() {
+    ensure_init();
+
+    // High-speed corner hit with three simultaneous contacts. Pair insertion
+    // order (axis sweep + canonical Soccar mesh order) drives the solver.
+    let mut state = BallState::DEFAULT;
+    state.pos = Vec3A::new(-14.149902, 2406.458, 852.3787);
+    state.vel = Vec3A::new(77.23597, 4379.937, 2946.5703);
+    state.ang_vel = Vec3A::new(2.2513509, 3.1616457, 3.1055932);
+    assert_parity(GameMode::Soccar, state, 720);
+}
+
+#[test]
+fn the_void_free_flight_parity() {
+    ensure_init();
+
+    // No static arena and no contacts: exercises the direct accumulator
+    // write-back path that skips the contact solver.
+    let mut state = BallState::DEFAULT;
+    state.pos = Vec3A::new(0.0, 0.0, 500.0);
+    state.vel = Vec3A::new(123.0, -456.0, 789.0);
+    state.ang_vel = Vec3A::new(1.0, 2.0, 3.0);
+    assert_parity(GameMode::TheVoid, state, 720);
+}
+
+#[test]
 fn heatseeker_seek_parity() {
     ensure_init();
     let mut state = BallState::DEFAULT;
@@ -231,6 +271,8 @@ fn heatseeker_seek_parity() {
     let orange = *arena.get_ball_state();
     assert_eq!(blue.pos.x, ball_sim::consts::heatseeker::BALL_START_POS.x);
     assert_eq!(blue.pos.y, -ball_sim::consts::heatseeker::BALL_START_POS.y);
+    assert_eq!(orange.pos.x, -blue.pos.x);
     assert_eq!(orange.pos.y, -blue.pos.y);
+    assert_eq!(orange.vel.x, -blue.vel.x);
     assert_eq!(orange.vel.y, -blue.vel.y);
 }

@@ -3,7 +3,7 @@ use crate::{
     ArenaContactTracker,
     bullet::{
         collision::{
-            broadphase::GridBroadphaseProxy,
+            broadphase::BroadphaseProxy,
             narrowphase::persistent_manifold::{PersistentManifold, pair_key},
             shapes::collision_shape::CollisionShapes,
         },
@@ -13,11 +13,6 @@ use crate::{
 
 const BALL_BODY_IDX: usize = 0;
 
-#[inline]
-const fn static_body_idx(client_obj_idx: usize) -> usize {
-    client_obj_idx + 1
-}
-
 #[derive(Clone, Debug)]
 pub struct CollisionDispatcher {
     pub persistent_manifolds: Vec<PersistentManifold>,
@@ -25,12 +20,10 @@ pub struct CollisionDispatcher {
     /// Pushed in pair-processing order, so the solver sees the same
     /// contact order as the old per-tick manifold clones.
     pub active_manifolds: Vec<usize>,
-    /// Dense index from ordered body pair to `persistent_manifolds` index.
-    /// Cell `min * stride + max` holds the index plus one (`0` = none).
-    /// Push-only manifold vector, so indices stay stable. Maintain at push
-    /// sites below; any removal/clear must rebuild this table too.
+    /// Dense index from the static body index to `persistent_manifolds`
+    /// index. The ball is always body 0, so a pair is identified by its
+    /// static body alone. Holds the manifold index plus one (`0` = none).
     manifold_table: Vec<u32>,
-    manifold_stride: usize,
 }
 
 impl Default for CollisionDispatcher {
@@ -39,7 +32,6 @@ impl Default for CollisionDispatcher {
             persistent_manifolds: Vec::with_capacity(8),
             active_manifolds: Vec::with_capacity(8),
             manifold_table: Vec::new(),
-            manifold_stride: 0,
         }
     }
 }
@@ -53,7 +45,6 @@ impl CollisionDispatcher {
         self.persistent_manifolds.clear();
         self.active_manifolds.clear();
         self.manifold_table.clear();
-        self.manifold_stride = 0;
     }
 
     /// Push a first-seen pair's manifold and record its index.
@@ -68,31 +59,56 @@ impl CollisionDispatcher {
         manifold.body1_idx = body1_idx;
         manifold.pair_key = key;
         // Read indices before push; growth rebuild covers prior manifolds only.
-        let (lo, hi) = (body0_idx.min(body1_idx), body0_idx.max(body1_idx));
-        if hi >= self.manifold_stride {
-            self.grow_manifold_table(hi + 1);
+        let slot = body0_idx.max(body1_idx);
+        if slot >= self.manifold_table.len() {
+            self.grow_manifold_table(slot + 1);
         }
         self.persistent_manifolds.push(manifold);
         let idx = self.persistent_manifolds.len() - 1;
-        let table_idx = lo * self.manifold_stride + hi;
-        debug_assert_eq!(self.manifold_table[table_idx], 0);
-        self.manifold_table[table_idx] = u32::try_from(idx + 1).expect("manifold index overflow");
+        debug_assert_eq!(self.manifold_table[slot], 0);
+        self.manifold_table[slot] = u32::try_from(idx + 1).expect("manifold index overflow");
         idx
+    }
+
+    pub fn release_manifold(&mut self, body0_idx: usize, body1_idx: usize) {
+        let slot = body0_idx.max(body1_idx);
+        let Some(entry) = self.manifold_table.get(slot).copied() else {
+            return;
+        };
+        if entry == 0 {
+            return;
+        }
+        let index = entry as usize - 1;
+        let last_index = self.persistent_manifolds.len() - 1;
+
+        self.persistent_manifolds[index].point_cache.clear();
+        self.manifold_table[slot] = 0;
+
+        // A child-algorithm cleanup can release a manifold in the middle of
+        // pair dispatch. Keep earlier active rows and remap the swap target.
+        self.active_manifolds.retain(|&active| active != index);
+        self.persistent_manifolds.swap_remove(index);
+        if index != last_index {
+            for active in &mut self.active_manifolds {
+                if *active == last_index {
+                    *active = index;
+                }
+            }
+            let moved = &self.persistent_manifolds[index];
+            let moved_slot = moved.body0_idx.max(moved.body1_idx);
+            self.manifold_table[moved_slot] =
+                u32::try_from(index + 1).expect("manifold index overflow");
+        }
     }
 
     /// Grow the table to cover `needed - 1` and reinsert existing mappings.
     fn grow_manifold_table(&mut self, needed: usize) {
-        // Round stride to 16 to avoid reallocating per body.
-        let new_stride = (needed + 15) & !15;
-        let mut new_table = vec![0u32; new_stride * new_stride];
+        let mut new_table = vec![0u32; needed];
         for (idx, manifold) in self.persistent_manifolds.iter().enumerate() {
-            let lo = manifold.body0_idx.min(manifold.body1_idx);
-            let hi = manifold.body0_idx.max(manifold.body1_idx);
-            new_table[lo * new_stride + hi] =
-                u32::try_from(idx + 1).expect("manifold index overflow");
+            let slot = manifold.body0_idx.max(manifold.body1_idx);
+            new_table[slot] = u32::try_from(idx + 1).expect("manifold index overflow");
         }
         self.manifold_table = new_table;
-        self.manifold_stride = new_stride;
     }
 
     // Miss leaves None; hit writes Some.
@@ -119,26 +135,22 @@ impl CollisionDispatcher {
         &mut self,
         ball_obj: &SphereRigidBody,
         collision_objs: &[RigidBody],
-        proxy1: &GridBroadphaseProxy,
+        proxy1: &BroadphaseProxy,
         contact_added_callback: &mut ArenaContactTracker,
     ) {
         let rb0 = ball_obj;
-        let rb1 = &collision_objs[proxy1.client_obj_idx];
+        let body1_idx = proxy1.client_obj_idx;
+        let rb1 = &collision_objs[body1_idx - 1];
 
         // Dense table lookup; insertion order is unchanged.
-        let (body0_idx, body1_idx) = (BALL_BODY_IDX, static_body_idx(proxy1.client_obj_idx));
+        let body0_idx = BALL_BODY_IDX;
         let wanted = pair_key(body0_idx, body1_idx);
-        let (lo, hi) = (body0_idx.min(body1_idx), body0_idx.max(body1_idx));
-        let cached_idx = if hi < self.manifold_stride {
-            let cell = self.manifold_table[lo * self.manifold_stride + hi];
-            if cell == 0 {
-                None
-            } else {
-                Some(cell as usize - 1)
-            }
-        } else {
-            None
-        };
+        let cached_idx = self
+            .manifold_table
+            .get(body1_idx)
+            .copied()
+            .filter(|&cell| cell != 0)
+            .map(|cell| cell as usize - 1);
         if let Some(cached_idx) = cached_idx {
             // Push-only vector, so a hit must reference this exact pair.
             let manifold = &self.persistent_manifolds[cached_idx];
@@ -163,7 +175,7 @@ impl CollisionDispatcher {
                     ),
                 )
             };
-            let has_contacts = convex_concave_collision_alg::process_collision_into(
+            convex_concave_collision_alg::process_collision_into(
                 rb0,
                 rb1,
                 mesh,
@@ -171,9 +183,9 @@ impl CollisionDispatcher {
                 contact_added_callback,
             );
 
-            if has_contacts {
-                self.active_manifolds.push(persistent_idx);
-            }
+            // RocketSim keeps the active row even when this tick produced no
+            // points; the island sort below must see the same list length.
+            self.active_manifolds.push(persistent_idx);
             return;
         }
 
@@ -198,11 +210,23 @@ impl CollisionDispatcher {
             (None, Some(fresh_manifold)) => {
                 self.insert_persistent_manifold(body0_idx, body1_idx, wanted, fresh_manifold)
             }
-            (None, None) => return,
+            (None, None) => {
+                // RocketSim retains an empty row after a pair survives the
+                // broadphase gate, even before the first contact point.
+                self.insert_persistent_manifold(
+                    body0_idx,
+                    body1_idx,
+                    wanted,
+                    PersistentManifold::new(
+                        rb0.get_contact_breaking_threshold()
+                            .min(rb1.get_contact_breaking_threshold()),
+                    ),
+                )
+            }
         };
 
-        if !self.persistent_manifolds[active_idx].point_cache.is_empty() {
-            self.active_manifolds.push(active_idx);
-        }
+        // The island sort consumes every processed pair, including rows whose
+        // point cache is empty this tick.
+        self.active_manifolds.push(active_idx);
     }
 }

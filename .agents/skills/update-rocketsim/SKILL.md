@@ -47,6 +47,9 @@ Incremental diffs (`old→new` only) are what matter. Ignore `Cargo.toml`
 | `src/sim/ball/base.rs`, `src/sim/arena/base.rs`, `src/sim/phys_state.rs` | `ball_sim/...` | Manifold clear/count APIs, `set_state` clearing, derive changes |
 | `src/sim/consts.rs` | each util's `consts` | Utils keep intentional subsets — only port values they actually use |
 | `src/bullet/.../vehicle_rl.rs` reorderings | usually N/A | `drive_sim` has a simplified floor-only SIMD vehicle with no ground-stick/pushback/dynamic bodies; `ball_sim` has its own dispatcher |
+| `src/bullet/dynamics/simulation_island_manager.rs` | `ball_sim/.../dispatch/collision_world.rs` | One dynamic body means every island key is equal, but RocketSim still sorts `active_manifolds`; port the equal-key permutation or long runs drift |
+| `src/bullet/collision/broadphase/axis_sweep.rs` | `ball_sim/.../broadphase/axis_sweep.rs` | Port it: pair insertion/removal order assigns manifold indices and drives retained-pair dispatch, so a cell-only scan diverges in multi-contact corners |
+| `src/base.rs` Soccar mesh ordering | `ball_sim/src/base.rs` | Sort Soccar meshes by `GameMode::soccar_component_order`; otherwise static handle order (and therefore axis-sweep pair order) differs |
 | demolish/respawn, 3-wheel configs, `is_on_ground` flows | N/A | Utils have no demos, no jumping off ground (`drive_sim`), no air-to-ground transitions (`air_sim`) |
 
 Past examples: 0.2.6 added input quantization (throttle/steer/pyr through

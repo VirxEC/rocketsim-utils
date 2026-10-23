@@ -215,6 +215,7 @@ impl Tree {
         mem::swap(a, b);
     }
 
+    #[allow(dead_code)]
     pub fn check_overlap_with(&self, aabb: &Aabb) -> bool {
         if !aabb.intersects(&self.aabb) {
             return false;

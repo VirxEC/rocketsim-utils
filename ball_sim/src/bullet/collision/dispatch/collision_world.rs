@@ -23,13 +23,7 @@ pub struct CollisionWorld {
 impl CollisionWorld {
     const CBT: Vec3A = Vec3A::splat(CONTACT_BREAKING_THRESHOLD);
 
-    pub fn new(mut pair_cache: GridBroadphase, ball_obj: SphereRigidBody) -> Self {
-        let aabb = ball_obj
-            .get_collision_shape()
-            .get_aabb(ball_obj.get_world_trans());
-
-        pair_cache.create_proxy(aabb);
-
+    pub fn new(pair_cache: GridBroadphase, ball_obj: SphereRigidBody) -> Self {
         Self {
             ball_obj,
             collision_objs: Vec::new(),
@@ -38,18 +32,24 @@ impl CollisionWorld {
         }
     }
 
+    pub fn init_ball_proxy(&mut self) {
+        let aabb = self
+            .ball_obj
+            .get_collision_shape()
+            .get_aabb(self.ball_obj.get_world_trans());
+        self.broadphase_pair_cache
+            .create_ball_proxy(aabb, &mut self.dispatcher1);
+    }
+
     pub fn add_collision_obj(&mut self, mut obj: RigidBody) -> usize {
         let idx = self.collision_objs.len();
-        let mut aabb = obj
+        let aabb = obj
             .get_collision_shape()
             .get_world_aabb(obj.get_world_trans());
 
-        aabb.min -= Self::CBT;
-        aabb.max += Self::CBT;
-
-        obj.broadphase_handle = self
-            .broadphase_pair_cache
-            .create_static_proxy(aabb, &obj, idx);
+        obj.broadphase_handle =
+            self.broadphase_pair_cache
+                .create_static_proxy(aabb, idx + 1, &mut self.dispatcher1);
 
         self.collision_objs.push(obj);
         idx
@@ -67,7 +67,8 @@ impl CollisionWorld {
         aabb.max += Self::CBT;
 
         debug_assert!((aabb.max - aabb.min).length_squared() < 1e12);
-        self.broadphase_pair_cache.set_aabb(aabb);
+        self.broadphase_pair_cache
+            .set_aabb(aabb, &mut self.dispatcher1);
     }
 
     pub fn perform_discrete_collision_detection(
@@ -84,5 +85,48 @@ impl CollisionWorld {
             &mut self.dispatcher1,
             contact_added_callback,
         );
+
+        sort_active_manifolds(&mut self.dispatcher1.active_manifolds);
     }
+}
+
+/// Reproduce RocketSim's island ordering for a one-dynamic-body world.
+///
+/// Every active manifold is ball-vs-static, so every island key is the same
+/// value. RocketSim still runs `indices.sort_unstable()` followed by its
+/// equal-key Hoare pass (whose comparisons never move `i`/`j`), which is a
+/// fixed permutation of the active list.
+fn sort_active_manifolds(indices: &mut [usize]) {
+    if indices.len() <= 1 {
+        return;
+    }
+
+    indices.sort_unstable();
+
+    fn sort(indices: &mut [usize], lo: usize, hi: usize) {
+        let mut i = lo;
+        let mut j = hi;
+        loop {
+            if i > j {
+                break;
+            }
+            indices.swap(i, j);
+            i += 1;
+            if j == 0 {
+                break;
+            }
+            j -= 1;
+            if i > j {
+                break;
+            }
+        }
+        if lo < j {
+            sort(indices, lo, j);
+        }
+        if i < hi {
+            sort(indices, i, hi);
+        }
+    }
+
+    sort(indices, 0, indices.len() - 1);
 }

@@ -44,6 +44,10 @@ impl DiscreteDynamicsWorld {
         self.collision_world.add_collision_obj(body)
     }
 
+    pub fn init_ball_proxy(&mut self) {
+        self.collision_world.init_ball_proxy();
+    }
+
     #[inline]
     fn apply_gravity(&mut self, time_step: f32) {
         self.collision_world.ball_obj.accum_lin_vel += self.gravity * time_step;
@@ -60,6 +64,21 @@ impl DiscreteDynamicsWorld {
     #[inline]
     fn solve_constraints(&mut self, time_step: f32) {
         let dispatcher = &mut self.collision_world.dispatcher1;
+        let has_contact_points = dispatcher
+            .active_manifolds
+            .iter()
+            .any(|&idx| !dispatcher.persistent_manifolds[idx].point_cache.is_empty());
+        if !has_contact_points {
+            // No contact rows. The solver copy-out would only add the
+            // accumulated forces back into the ball, so do that directly.
+            // Broadphase pairs without points still need their active rows
+            // cleared, as the solver would do during setup.
+            dispatcher.active_manifolds.clear();
+            let body = &mut self.collision_world.ball_obj;
+            body.lin_vel += body.accum_lin_vel;
+            body.ang_vel += body.accum_ang_vel;
+            return;
+        }
         self.solver.solve_group(
             &mut self.collision_world.ball_obj,
             &mut dispatcher.persistent_manifolds,

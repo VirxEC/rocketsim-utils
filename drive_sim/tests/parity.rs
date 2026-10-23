@@ -26,6 +26,23 @@ fn make_rs_arena() -> (rs::Arena, usize) {
     (arena, car_idx)
 }
 
+fn set_rs_grounded_state(rs_arena: &mut rs::Arena, car_idx: usize, pos: Vec3A, boost: f32) {
+    let core = rs::CarCore::grounded(
+        rs::PhysState {
+            pos,
+            rot_mat: glam::Mat3A::IDENTITY,
+            vel: Vec3A::ZERO,
+            ang_vel: Vec3A::ZERO,
+        },
+        boost,
+    );
+    let mut state = rs::CarState::from(core);
+    // drive_sim is floor-only: match its grounded start without rebuilding
+    // RocketSim's wheel contact history at the new pose.
+    state.set_contact_flags(true, [false; 4]);
+    rs_arena.set_car_state_full(car_idx, state);
+}
+
 const POS_TOL: f32 = 1.0;
 const VEL_TOL: f32 = 1.0;
 
@@ -70,12 +87,7 @@ fn set_both_states(
     sim_state.boost = boost;
     sim.set_car_state(sim_state);
 
-    let mut rs_state = rs::CarState {
-        boost,
-        ..rs::CarState::default()
-    };
-    rs_state.phys.pos = pos;
-    rs_arena.set_car_state(car_idx, rs_state);
+    set_rs_grounded_state(rs_arena, car_idx, pos, boost);
 }
 
 fn set_both_controls(
@@ -110,12 +122,7 @@ fn straight_line_drive_parity() {
     sim_state.phys.pos = start_pos;
     sim.set_car_state(sim_state);
 
-    let mut rs_state = rs::CarState {
-        boost: sim_state.boost,
-        ..rs::CarState::default()
-    };
-    rs_state.phys.pos = start_pos;
-    rs_arena.set_car_state(car_idx, rs_state);
+    set_rs_grounded_state(&mut rs_arena, car_idx, start_pos, sim_state.boost);
 
     for tick in 0..300 {
         sim.set_car_controls(CarControls {
@@ -150,12 +157,7 @@ fn turning_drive_parity() {
     sim_state.phys.pos = start_pos;
     sim.set_car_state(sim_state);
 
-    let mut rs_state = rs::CarState {
-        boost: sim_state.boost,
-        ..rs::CarState::default()
-    };
-    rs_state.phys.pos = start_pos;
-    rs_arena.set_car_state(car_idx, rs_state);
+    set_rs_grounded_state(&mut rs_arena, car_idx, start_pos, sim_state.boost);
 
     for tick in 0..240 {
         let mut controls = CarControls {

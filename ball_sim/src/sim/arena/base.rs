@@ -54,6 +54,7 @@ impl Arena {
         if config.game_mode != GameMode::TheVoid {
             Self::setup_arena_collision_shapes(&mut bullet_world, config.game_mode);
         }
+        bullet_world.init_ball_proxy();
 
         Self {
             ball,
@@ -120,20 +121,20 @@ impl Arena {
             );
         };
 
+        // Floor
+        add_plane(Vec3A::new(0.0, 0.0, arena_aabb.min.z), Vec3A::Z);
+
         // Ceiling
         add_plane(Vec3A::new(0.0, 0.0, arena_aabb.max.z), Vec3A::NEG_Z);
 
         if game_mode != GameMode::Dropshot {
-            // Floor
-            add_plane(Vec3A::new(0.0, 0.0, arena_aabb.min.z), Vec3A::Z);
-
             // Side walls
             add_plane(
-                Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.center().z),
+                Vec3A::new(arena_aabb.min.x, 0.0, arena_aabb.max.z / 2.0),
                 Vec3A::X,
             );
             add_plane(
-                Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.center().z),
+                Vec3A::new(arena_aabb.max.x, 0.0, arena_aabb.max.z / 2.0),
                 Vec3A::NEG_X,
             );
         }
@@ -142,12 +143,12 @@ impl Arena {
             GameMode::Hoops => {
                 // Y walls
                 add_plane(
-                    Vec3A::new(0.0, arena_aabb.min.y, arena_aabb.center().z),
+                    Vec3A::new(0.0, arena_aabb.min.y, arena_aabb.max.z / 2.0),
                     Vec3A::Y,
                 );
 
                 add_plane(
-                    Vec3A::new(0.0, arena_aabb.max.y, arena_aabb.center().z),
+                    Vec3A::new(0.0, arena_aabb.max.y, arena_aabb.max.z / 2.0),
                     Vec3A::NEG_Y,
                 );
             }
@@ -194,7 +195,7 @@ impl Arena {
         match self.config.game_mode {
             GameMode::Heatseeker => {
                 let y_sign = f32::from(team as i8 * 2 - 1);
-                let scale = Vec3A::new(1.0, y_sign, 1.0);
+                let scale = Vec3A::new(-y_sign, y_sign, 1.0);
                 ball_state.phys.pos = consts::heatseeker::BALL_START_POS * scale;
                 ball_state.phys.vel = consts::heatseeker::BALL_START_VEL * scale;
             }

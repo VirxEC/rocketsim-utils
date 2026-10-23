@@ -50,8 +50,4 @@ impl BvhTriangleMeshShape {
         self.bvh
             .report_aabb_overlapping_node(&mut my_node_callback, aabb);
     }
-
-    pub fn check_overlap_with(&self, aabb: &Aabb) -> bool {
-        self.bvh.check_overlap_with(aabb)
-    }
 }

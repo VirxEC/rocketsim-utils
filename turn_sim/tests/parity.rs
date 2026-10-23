@@ -32,21 +32,19 @@ fn make_rs_arena() -> (rs::Arena, usize) {
 
 fn initial_states(rot: Quat, ang_vel: Vec3A) -> (Car, rs::CarState) {
     let sim_car = Car { rot, ang_vel };
-    let rs_state = rs::CarState {
+    let core = rs::CarCore {
         phys: rs::PhysState {
             pos: Vec3A::new(0.0, 0.0, SPAWN_Z),
             rot_mat: Mat3A::from_quat(rot),
             vel: Vec3A::ZERO,
             ang_vel,
         },
-        is_on_ground: false,
-        wheels_with_contact: [None; 4],
         // turn_sim has no flip state. Keep RocketSim past its pitch-lock
         // window so it models the same pure-rotation behavior.
         flip_time: 1.0,
-        ..rs::CarState::default()
+        ..rs::CarCore::DEFAULT
     };
-    (sim_car, rs_state)
+    (sim_car, rs::CarState::from(core))
 }
 
 fn to_rs_controls(controls: CarControls) -> rs::CarControls {
@@ -96,7 +94,7 @@ fn run_scenario(
     init_rs();
     let (mut sim_car, rs_state) = initial_states(rot, ang_vel);
     let (mut rs_arena, car_idx) = make_rs_arena();
-    rs_arena.set_car_state(car_idx, rs_state);
+    rs_arena.set_car_state_full(car_idx, rs_state);
 
     for tick in 0..ticks {
         let controls = schedule(tick);
@@ -108,7 +106,7 @@ fn run_scenario(
         assert_turn_close(&sim_car, &rs_state, tick);
 
         assert!(
-            !rs_state.is_on_ground && rs_state.wheels_with_contact == [None; 4],
+            !rs_state.is_on_ground() && rs_state.wheels_with_contact() == &[None; 4],
             "car left suspended flight at tick {tick}"
         );
     }

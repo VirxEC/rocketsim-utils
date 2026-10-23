@@ -23,7 +23,7 @@ fn make_rs_arena() -> (rs::Arena, usize) {
 }
 
 fn to_rs_state(state: &CarState) -> rs::CarState {
-    rs::CarState {
+    let core = rs::CarCore {
         phys: rs::PhysState {
             pos: state.phys.pos,
             rot_mat: state.phys.rot_mat,
@@ -39,32 +39,35 @@ fn to_rs_state(state: &CarState) -> rs::CarState {
             boost: state.controls.boost,
             ..rs::CarControls::DEFAULT
         },
-        prev_controls: rs::CarControls {
-            throttle: state.prev_controls.throttle,
-            pitch: state.prev_controls.pitch,
-            yaw: state.prev_controls.yaw,
-            roll: state.prev_controls.roll,
-            jump: state.prev_controls.jump,
-            boost: state.prev_controls.boost,
-            ..rs::CarControls::DEFAULT
-        },
-        is_on_ground: false,
-        wheels_with_contact: [None; 4],
         has_jumped: state.has_jumped,
         has_double_jumped: state.has_double_jumped,
         has_flipped: state.has_flipped,
         flip_rel_torque: state.flip_rel_torque,
+        jump_ticks: (state.jump_time / (1.0 / 120.0)).round() as u32,
         flip_time: state.flip_time,
         is_flipping: state.is_flipping,
         is_jumping: state.is_jumping,
-        air_time: state.air_time,
         air_time_since_jump: state.air_time_since_jump,
         boost: state.boost,
+        ..rs::CarCore::DEFAULT
+    };
+    let mut rs_state = rs::CarState::from(core).with_tuning(rs::CarTuning {
         time_since_boosted: state.time_since_boosted,
-        is_boosting: state.is_boosting,
         boosting_time: state.boosting_time,
-        ..rs::CarState::default()
-    }
+        is_boosting: state.is_boosting,
+        air_time: state.air_time,
+        ..rs::CarTuning::DEFAULT
+    });
+    rs_state.set_prev_controls(rs::CarControls {
+        throttle: state.prev_controls.throttle,
+        pitch: state.prev_controls.pitch,
+        yaw: state.prev_controls.yaw,
+        roll: state.prev_controls.roll,
+        jump: state.prev_controls.jump,
+        boost: state.prev_controls.boost,
+        ..rs::CarControls::DEFAULT
+    });
+    rs_state
 }
 
 fn to_rs_controls(controls: CarControls) -> rs::CarControls {
@@ -151,7 +154,7 @@ fn aerial_free_flight_parity() {
     sim_state.phys.vel = Vec3A::new(400.0, 0.0, 0.0);
     sim.set_car_state(sim_state);
 
-    rs_arena.set_car_state(car_idx, to_rs_state(&sim_state));
+    rs_arena.set_car_state_full(car_idx, to_rs_state(&sim_state));
 
     for tick in 0..130 {
         let mut controls = CarControls::DEFAULT;
@@ -191,7 +194,7 @@ fn aerial_dodge_parity() {
     sim_state.air_time_since_jump = 0.2;
     sim.set_car_state(sim_state);
 
-    rs_arena.set_car_state(car_idx, to_rs_state(&sim_state));
+    rs_arena.set_car_state_full(car_idx, to_rs_state(&sim_state));
 
     for tick in 0..120 {
         let mut controls = CarControls::DEFAULT;
@@ -230,7 +233,7 @@ fn aerial_boost_parity() {
     sim_state.boost = 100.0;
     sim.set_car_state(sim_state);
 
-    rs_arena.set_car_state(car_idx, to_rs_state(&sim_state));
+    rs_arena.set_car_state_full(car_idx, to_rs_state(&sim_state));
 
     for tick in 0..150 {
         let mut controls = CarControls::DEFAULT;
@@ -272,7 +275,7 @@ fn aerial_forward_flip_parity() {
     sim_state.air_time_since_jump = 0.2;
     sim.set_car_state(sim_state);
 
-    rs_arena.set_car_state(car_idx, to_rs_state(&sim_state));
+    rs_arena.set_car_state_full(car_idx, to_rs_state(&sim_state));
 
     for tick in 0..150 {
         let mut controls = CarControls::DEFAULT;
@@ -315,7 +318,7 @@ fn aerial_backflip_cancel_parity() {
     sim_state.air_time_since_jump = 0.2;
     sim.set_car_state(sim_state);
 
-    rs_arena.set_car_state(car_idx, to_rs_state(&sim_state));
+    rs_arena.set_car_state_full(car_idx, to_rs_state(&sim_state));
 
     for tick in 0..150 {
         let mut controls = CarControls::DEFAULT;
@@ -352,7 +355,7 @@ fn aerial_yaw_roll_parity() {
     sim_state.phys.vel = Vec3A::new(500.0, 200.0, 0.0);
     sim.set_car_state(sim_state);
 
-    rs_arena.set_car_state(car_idx, to_rs_state(&sim_state));
+    rs_arena.set_car_state_full(car_idx, to_rs_state(&sim_state));
 
     for tick in 0..150 {
         let mut controls = CarControls::DEFAULT;
@@ -394,7 +397,7 @@ fn aerial_double_jump_window_parity() {
     sim_state.air_time_since_jump = 0.2;
     sim.set_car_state(sim_state);
 
-    rs_arena.set_car_state(car_idx, to_rs_state(&sim_state));
+    rs_arena.set_car_state_full(car_idx, to_rs_state(&sim_state));
 
     for tick in 0..120 {
         let mut controls = CarControls::DEFAULT;
@@ -435,7 +438,7 @@ fn aerial_ang_vel_clamp_parity() {
     sim_state.phys.ang_vel = Vec3A::new(12.0, -9.0, 6.0);
     sim.set_car_state(sim_state);
 
-    rs_arena.set_car_state(car_idx, to_rs_state(&sim_state));
+    rs_arena.set_car_state_full(car_idx, to_rs_state(&sim_state));
 
     for tick in 0..120 {
         let controls = CarControls::DEFAULT;

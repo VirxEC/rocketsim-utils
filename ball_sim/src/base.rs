@@ -128,6 +128,7 @@ where
         }
 
         let mut meshes = Vec::new();
+        let mut mesh_files = Vec::new();
         let mut target_hashes = game_mode.get_hashes();
 
         for (i, entry) in byte_mesh_files.enumerate() {
@@ -150,7 +151,17 @@ where
             }
 
             *hash_count += 1;
+            mesh_files.push(mesh_file);
+        }
 
+        if game_mode == GameMode::Soccar {
+            mesh_files.sort_by_key(|mesh| {
+                GameMode::soccar_component_order(mesh.get_hash())
+                    .expect("validated Soccar mesh hash has a native order")
+            });
+        }
+
+        for mesh_file in &mesh_files {
             let translation = mesh_file.component_translation();
             let tri_mesh = mesh_file.make_bullet_mesh_local();
             let bvt_mesh = BvhTriangleMeshShape::new(tri_mesh);

@@ -86,10 +86,11 @@ impl CarState {
     };
 
     #[must_use]
-    pub const fn has_flip_or_jump(&self) -> bool {
+    pub const fn has_flip_or_jump(&self, tick_time: f32) -> bool {
         !self.has_flipped
             && !self.has_double_jumped
-            && self.air_time_since_jump < crate::sim::consts::car::jump::DOUBLEJUMP_MAX_DELAY
+            && self.air_time_since_jump + tick_time
+                < crate::sim::consts::car::jump::DOUBLEJUMP_MAX_DELAY
     }
 }
 
