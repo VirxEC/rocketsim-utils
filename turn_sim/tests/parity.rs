@@ -41,6 +41,9 @@ fn initial_states(rot: Quat, ang_vel: Vec3A) -> (Car, rs::CarState) {
         },
         is_on_ground: false,
         wheels_with_contact: [None; 4],
+        // turn_sim has no flip state. Keep RocketSim past its pitch-lock
+        // window so it models the same pure-rotation behavior.
+        flip_time: 1.0,
         ..rs::CarState::default()
     };
     (sim_car, rs_state)

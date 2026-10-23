@@ -49,10 +49,10 @@ pub fn quantize(body: &mut SphereRigidBody) {
         VecQuantizeMode::Velocity,
     ) * UU_TO_BT;
     let new_ang_vel = quantize_vec_ue3(
-        body.ang_vel * BT_TO_UU,
+        body.ang_vel,
         quantize::ANG_VEL_SCALE,
         VecQuantizeMode::Velocity,
-    ) * UU_TO_BT;
+    );
 
     body.set_world_trans(new_pos);
     body.set_lin_vel(new_vel);

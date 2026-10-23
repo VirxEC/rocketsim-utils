@@ -2,7 +2,10 @@ use std::f32::consts::FRAC_PI_4;
 
 use glam::{IVec3, Mat3A, Quat, Vec3A};
 
-use crate::{car_controls::CarControls, consts::car};
+use crate::{
+    car_controls::CarControls,
+    consts::{car, quantize},
+};
 
 pub mod car_controls;
 pub mod consts;
@@ -26,6 +29,27 @@ fn quantize_air_inputs(ctrls: Vec3A) -> Vec3A {
     )
 }
 
+/// An extension of `Vec3A::signum` that keeps zero-components as zero (regardless of sign bit).
+#[must_use]
+fn vec3a_sign_3(v: Vec3A) -> Vec3A {
+    let signum = v.signum();
+    Vec3A::select(v.cmpeq(Vec3A::ZERO), Vec3A::ZERO, signum)
+}
+
+/// UE3-networking-style quantization of angular velocity.
+#[must_use]
+fn quantize_ang_vel(vec: Vec3A) -> Vec3A {
+    let scale = quantize::ANG_VEL_SCALE;
+    let inv_scale = 1.0 / scale;
+    let truncated = (vec * scale).trunc();
+    let rounded = truncated * inv_scale + Vec3A::ZERO;
+
+    const OFFSET_CORRECT_FRAC: f32 = 0.1;
+    let offset_mag = OFFSET_CORRECT_FRAC * inv_scale;
+
+    rounded + (vec3a_sign_3(truncated) * offset_mag)
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Car {
     pub rot: Quat,
@@ -39,8 +63,18 @@ impl Car {
         Mat3A::from_quat(self.rot)
     }
 
+    fn clamp_ang_vel(mut ang_vel: Vec3A) -> Vec3A {
+        let ang_vel_len_sq = ang_vel.length_squared();
+        if ang_vel_len_sq > car::MAX_ANG_SPEED * car::MAX_ANG_SPEED {
+            ang_vel = ang_vel / ang_vel_len_sq.sqrt() * car::MAX_ANG_SPEED;
+        }
+        ang_vel
+    }
+
     pub fn step_turn(&mut self, ctrls: CarControls, dt: f32) {
         const REMAP_BASIS: Quat = Quat::from_array([0.5, -0.5, -0.5, 0.5]);
+
+        self.ang_vel = quantize_ang_vel(Self::clamp_ang_vel(self.ang_vel));
 
         let direction = self.rot * REMAP_BASIS;
         let ctrls = quantize_air_inputs(Vec3A::new(ctrls.pitch, ctrls.yaw, ctrls.roll));
@@ -57,10 +91,7 @@ impl Car {
         self.ang_vel += total_torque * dt;
         self.rot = Self::integrate_transform(self.rot, self.ang_vel, dt);
 
-        let ang_vel_len_sq = self.ang_vel.length_squared();
-        if ang_vel_len_sq > car::MAX_ANG_SPEED * car::MAX_ANG_SPEED {
-            self.ang_vel = self.ang_vel / ang_vel_len_sq.sqrt() * car::MAX_ANG_SPEED;
-        }
+        self.ang_vel = Self::clamp_ang_vel(self.ang_vel);
     }
 
     #[must_use]

@@ -110,7 +110,10 @@ impl Car {
                 && rel_dodge_torque.y.signum() == self.state.controls.pitch.signum()
                 && prev_flip_time >= car_consts::flip::PITCH_CANCEL_GATE_MIN_TIME
             {
-                pitch_scale = 1.0 - self.state.controls.pitch.abs().min(1.0);
+                pitch_scale = 1.0
+                    - quantize_axis_input(-self.state.controls.pitch)
+                        .abs()
+                        .min(1.0);
             }
 
             rel_dodge_torque.y *= pitch_scale;
@@ -130,8 +133,7 @@ impl Car {
             if inputs != Vec3A::ZERO
                 && (prev_is_flipping
                     || self.state.is_flipping
-                    || self.state.has_flipped
-                        && prev_flip_time < car_consts::flip::PITCHLOCK_EXTRA_TIME)
+                    || prev_flip_time < car_consts::flip::PITCHLOCK_EXTRA_TIME)
             {
                 pitch_torque_scale = 0.0;
             }
@@ -162,7 +164,7 @@ impl Car {
                 .add_impulse(Impulse::Angular(rb_torque), false, true);
         }
 
-        let throttle_scale = if self.state.controls.boost || self.state.is_boosting {
+        let throttle_scale = if self.state.is_boosting {
             1.0
         } else {
             quantize_axis_input(self.state.controls.throttle)
@@ -193,9 +195,9 @@ impl Car {
         }
 
         if jump_pressed && self.state.air_time_since_jump < car_consts::jump::DOUBLEJUMP_MAX_DELAY {
-            let input_magnitude = self.state.controls.yaw.abs()
-                + self.state.controls.pitch.abs()
-                + self.state.controls.roll.abs();
+            const PYR_SCALE: Vec3A = Vec3A::new(-1.0, 1.0, 1.0);
+            let dodge_input = quantize_axis_inputs(self.state.controls.pyr() * PYR_SCALE);
+            let input_magnitude = dodge_input.x.abs() + dodge_input.y.abs() + dodge_input.z.abs();
             let is_flip_input = input_magnitude >= self.config.dodge_deadzone;
 
             let can_use = !self.state.is_auto_flipping
@@ -211,14 +213,11 @@ impl Car {
                 self.state.has_jumped = true;
 
                 if is_flip_input {
-                    const PYR_SCALE: Vec3A = Vec3A::new(-1.0, 1.0, 1.0);
-
                     self.state.flip_time = 0.0;
                     self.state.has_flipped = true;
                     self.state.is_flipping = true;
 
-                    let pyr = self.state.controls.pyr() * PYR_SCALE;
-                    let mut dodge_dir = quantize_axis_inputs(pyr);
+                    let mut dodge_dir = dodge_input;
                     dodge_dir.y += dodge_dir.z;
 
                     if dodge_dir.x.abs() < 0.1 && dodge_dir.y.abs() < 0.1 {
@@ -301,7 +300,7 @@ impl Car {
             } else {
                 self.tick_time
             };
-        } else if self.state.has_flipped {
+        } else {
             self.state.flip_time += self.tick_time;
         }
     }

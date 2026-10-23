@@ -24,7 +24,8 @@ pub struct CarState {
     /// Forward flip will have positive Y
     pub flip_rel_torque: Vec3A,
     pub jump_time: f32,
-    /// When currently flipping, the time since we started flipping, else 0
+    /// Elapsed seconds since the flip activity last changed.
+    /// Advances while inactive.
     pub flip_time: f32,
     /// True during a flip (not an auto-flip, and not after a flip)
     pub is_flipping: bool,

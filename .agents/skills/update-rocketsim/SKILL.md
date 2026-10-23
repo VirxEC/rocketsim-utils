@@ -40,7 +40,7 @@ Incremental diffs (`old→new` only) are what matter. Ignore `Cargo.toml`
 |---|---|---|
 | `src/sim/car/base.rs` driving (`update_wheels`, friction input) | `drive_sim/src/sim/car/base.rs` | Single car, always grounded; `wheels_with_contact` is `[bool; 4]` |
 | `src/sim/car/base.rs` air torque / flip / air throttle | `air_sim/src/sim/car/base.rs` | No wheels/ground; `update_double_jump_or_flip` is the dodge source |
-| `src/sim/car/base.rs` turn torque | `turn_sim/src/lib.rs` | Pure rotation; check its quantize helper against upstream's |
+| `src/sim/car/base.rs` turn torque | `turn_sim/src/lib.rs` | Pure rotation; no flip/pitch-lock state (parity fixture sets `flip_time` past `PITCHLOCK_EXTRA_TIME`). Mirrors the per-tick car `ang_vel` quantization |
 | `src/shared/quantize.rs` input helpers | helpers in `drive_sim` + `air_sim` car `base.rs` | Copy verbatim (see rules below) |
 | `src/sim/car/car_controls.rs` | `air_sim/.../car_controls.rs` | Only `pyr()`/`with_pyr()`-style API changes apply; `drive_sim`/`turn_sim` have reduced controls without `pyr` |
 | `src/sim/boost_pad/base.rs` | `drive_sim/src/sim/boost_pad/base.rs` | Only util with boost pads |
@@ -52,7 +52,10 @@ Incremental diffs (`old→new` only) are what matter. Ignore `Cargo.toml`
 Past examples: 0.2.6 added input quantization (throttle/steer/pyr through
 `quantize_axis_inputs`, `pyr(): Vec3→Vec3A`); 0.2.7 replaced suspension consts
 with per-body `suspension_strengths()` and reworked dodge-dir computation;
-0.2.5 fixed the boost-pad AABB to use `cyl_radius`.
+0.2.5 fixed the boost-pad AABB to use `cyl_radius`; 0.2.12 quantized the dodge
+deadzone check and pitch-cancel input, dropped `has_flipped` from the pitch
+lock, made `flip_time` advance while inactive, and stopped converting
+`ang_vel` through UU for quantization.
 
 ## 4. Port rules
 
@@ -62,8 +65,10 @@ with per-body `suspension_strengths()` and reworked dodge-dir computation;
   suspension values like 35.735 vs the old 35.75 const).
 - Known invariants (re-verify against the diff, don't assume): sticky force
   keeps **raw** throttle; vehicle friction input stays unconditional
-  `boost → 1.0`; dodge deadzone checks stay raw while the dodge vector is
-  quantized; `quantize_axis_inputs` (`.round()`) and `quantize_axis_input`
+  `boost → 1.0`; since 0.2.12 the dodge deadzone uses the same quantized
+  `dodge_input` as the dodge vector (older releases checked raw inputs);
+  car `ang_vel` is quantized in BT without a UU round trip;
+  `quantize_axis_inputs` (`.round()`) and `quantize_axis_input`
   (`round_ties_even`) are byte-equivalent by construction (the `>> 1` folds
   the tie difference away).
 - Distinguish real drift from intentional simplifications: if a util lacks the

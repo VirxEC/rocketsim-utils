@@ -11,3 +11,7 @@ pub mod car {
         pub const TORQUE_APPLY_SCALE: f32 = TAU / (1 << 16) as f32 * 1000.0;
     }
 }
+
+pub mod quantize {
+    pub const ANG_VEL_SCALE: f32 = 10000.0;
+}
