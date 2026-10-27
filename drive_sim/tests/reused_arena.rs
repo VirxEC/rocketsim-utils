@@ -74,6 +74,7 @@ fn step_case(
             i,
             drive_sim::BoostPadState {
                 cooldown: if i % 3 == 0 { 2.5 } else { 0.0 },
+                ..drive_sim::BoostPadState::DEFAULT
             },
         );
     }

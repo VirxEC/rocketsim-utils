@@ -35,6 +35,8 @@ impl Ball {
     }
 
     pub fn new(game_mode: GameMode, mutator_config: &MutatorConfig) -> (Self, SphereRigidBody) {
+        // This crate assumes the ball is always active; it does not model the
+        // upstream ball sleeping state.
         let (collision_shape, local_inertia) =
             Self::make_ball_collision_shape(game_mode, mutator_config);
 

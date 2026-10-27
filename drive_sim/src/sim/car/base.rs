@@ -259,7 +259,7 @@ impl Car {
             }
 
             rb.add_impulse(
-                Impulse::Linear(UPWARDS_DIR * sticky_force_scale * gravity.z * tick_time),
+                Impulse::Linear(UPWARDS_DIR * sticky_force_scale * -gravity.z.abs() * tick_time),
                 false,
                 true,
             );
@@ -318,7 +318,10 @@ impl Car {
             }
         }
 
-        self.state.boost = self.state.boost.clamp(0.0, car_consts::boost::MAX);
+        self.state.boost = self
+            .state
+            .boost
+            .clamp(0.0, mutator_config.car_max_boost_amount);
     }
 
     pub fn pre_tick_update(

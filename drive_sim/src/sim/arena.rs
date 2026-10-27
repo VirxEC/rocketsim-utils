@@ -96,11 +96,17 @@ impl Arena {
         self.car
             .finish_physics_tick(&mut self.bullet_world.collision_obj);
 
-        if let Some(boost_pad_grid) = self.boost_pad_grid.as_mut() {
+        if self.mutator_config.boost_pads_enabled
+            && let Some(boost_pad_grid) = self.boost_pad_grid.as_mut()
+        {
+            let max_boost = self.mutator_config.car_max_boost_amount;
+            boost_pad_grid.update_membership(&self.car.state);
+
             boost_pad_grid.maybe_give_car_boost(
                 &mut self.car.state,
                 self.tick_count,
                 self.tick_time,
+                max_boost,
             );
         }
 
@@ -165,19 +171,24 @@ impl Arena {
 
     #[must_use]
     pub fn get_boost_pad_state(&self, idx: usize) -> BoostPadState {
-        let pad = self.boost_pads()[idx];
+        let pad = &self.boost_pads()[idx];
         let cooldown = pad.gave_boost_tick_count.map_or(0.0, |gave_boost_tick| {
             let max_cooldown = pad.max_cooldown;
             let time_since = ((self.tick_count() as i64 - gave_boost_tick) as f32) * self.tick_time;
             (max_cooldown - time_since).max(0.0)
         });
 
-        BoostPadState { cooldown }
+        BoostPadState {
+            cooldown,
+            touching_car_idxs: if pad.touching { vec![0] } else { Vec::new() },
+        }
     }
 
     pub fn set_boost_pad_state(&mut self, idx: usize, state: BoostPadState) {
         let boost_pad_grid = self.boost_pad_grid.as_mut().unwrap();
         let tick_count = self.tick_count;
+        boost_pad_grid.set_touching(idx, state.touching_car_idxs.contains(&0));
+
         let pad = &mut boost_pad_grid.all_pads[idx];
         if state.cooldown > 0.0 {
             let time_since_pickup = (pad.max_cooldown - state.cooldown).max(0.0);

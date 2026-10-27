@@ -1,5 +1,5 @@
 ---
-name: Update RocketSim utils after a RocketSim release
+name: update-rocketsim
 description: Use when a new rocketsim crate version is published. Syncs the physics copies in air_sim, ball_sim, drive_sim, and turn_sim to match the new RocketSim release, then verifies with parity tests.
 ---
 

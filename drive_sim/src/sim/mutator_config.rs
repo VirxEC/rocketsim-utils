@@ -12,6 +12,9 @@ pub struct MutatorConfig {
     pub boost_pad_amount_big: f32,
     pub boost_pad_cooldown_big: f32,
     pub boost_pad_cooldown_small: f32,
+    pub car_max_boost_amount: f32,
+    /// Check car overlap with boost pads and grant boost (default `true`).
+    pub boost_pads_enabled: bool,
 
     pub recharge_boost_enabled: bool,
     pub recharge_boost_per_second: f32,
@@ -42,6 +45,8 @@ impl MutatorConfig {
             boost_pad_amount_small: consts::boost_pads::BOOST_AMOUNT_SMALL,
             boost_pad_cooldown_big: consts::boost_pads::COOLDOWN_BIG,
             boost_pad_cooldown_small: consts::boost_pads::COOLDOWN_SMALL,
+            car_max_boost_amount: consts::car::boost::MAX,
+            boost_pads_enabled: true,
             recharge_boost_enabled: matches!(game_mode, GameMode::Dropshot),
             recharge_boost_per_second: consts::car::boost::RECHARGE_PER_SECOND,
             recharge_boost_delay: consts::car::boost::RECHARGE_DELAY,
